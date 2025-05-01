@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Body
 from pydantic import BaseModel
-from get_audio import get_episode_audio_from_apple, get_episode_audio_from_spotify
-from audio_upload_producer import emit_audio_uploaded
+from podcast_audio_resolver_service.get_audio import get_episode_audio_from_apple, get_episode_audio_from_spotify
+from podcast_audio_resolver_service.audio_upload_producer import emit_audio_uploaded
 from fastapi.middleware.cors import CORSMiddleware
 import uuid
 import os

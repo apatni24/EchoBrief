@@ -1,7 +1,7 @@
-from spotify_scraper import get_show_and_episode_title
-import apple_scraper
-from rss_fetcher import get_rss_feed_url, get_rss_from_apple_link
-from audio_extractor import download_audio_and_get_metadata
+from podcast_audio_resolver_service.spotify_scraper import get_show_and_episode_title
+from podcast_audio_resolver_service import apple_scraper
+from podcast_audio_resolver_service.rss_fetcher import get_rss_feed_url, get_rss_from_apple_link
+from podcast_audio_resolver_service.audio_extractor import download_audio_and_get_metadata
 import re
 
 def get_episode_audio_from_spotify(episode_url):

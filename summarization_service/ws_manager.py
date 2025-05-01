@@ -19,6 +19,7 @@ class ConnectionManager:
     async def broadcast(self, job_id: str, message: dict):
         # Send message JSON to all sockets listening on job_id
         conns = self.active.get(job_id, [])
+        print(conns)
         for ws in list(conns):
             try:
                 await ws.send_json(message)
