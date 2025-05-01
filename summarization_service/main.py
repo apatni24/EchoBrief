@@ -7,12 +7,21 @@ from summarization_service.ws_manager import manager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start summarizer loop as background task
     task = asyncio.create_task(transcription_complete_consumer.consume_transcription_completed())
     yield
     task.cancel()
 
 app = FastAPI(lifespan=lifespan)
+
+#  ─── ADD THIS ─────────────────────────────────────────────────────────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://your-frontend-domain.com"],  # or ["*"] for wide-open during testing
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=True,
+)
+# ────────────────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health_check():
@@ -20,11 +29,10 @@ def health_check():
 
 @app.websocket("/ws/summary/{job_id}")
 async def ws_summary(websocket: WebSocket, job_id: str):
-    await websocket.accept()
+    await websocket.accept()                           # Must accept the handshake :contentReference[oaicite:2]{index=2}
     await manager.connect(job_id, websocket)
     try:
         while True:
-            # keep connection alive
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(job_id, websocket)
