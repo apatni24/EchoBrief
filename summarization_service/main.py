@@ -16,7 +16,7 @@ app = FastAPI(lifespan=lifespan)
 #  ─── ADD THIS ─────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://your-frontend-domain.com"],  # or ["*"] for wide-open during testing
+    allow_origins=["*"],  # or ["*"] for wide-open during testing
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,
