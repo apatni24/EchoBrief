@@ -3,11 +3,11 @@
 # Start internal transcription service
 uvicorn transcription_service.main:app --host 0.0.0.0 --port 8081 &
 
-# Start summarization service
-uvicorn summarization_service.main:app --host 0.0.0.0 --port 8082 --proxy-headers &
+# Start summarization service using UNIX socket
+uvicorn summarization_service.main:app --uds /tmp/summary.sock --proxy-headers &
 
-# Start resolver service
+# Start public podcast resolver service
 uvicorn podcast_audio_resolver_service.main:app --host 0.0.0.0 --port 8080 &
 
-# Start NGINX last so it doesn’t race
+# Start NGINX reverse proxy
 nginx -g 'daemon off;'

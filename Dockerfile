@@ -15,6 +15,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy app code
 COPY . .
 
+# Ensure /tmp directory exists and is writable
+RUN mkdir -p /tmp && chmod 777 /tmp
+
 # Make sure start.sh is executable
 RUN chmod +x start.sh
 
