@@ -4,7 +4,7 @@
 uvicorn transcription_service.main:app --host 0.0.0.0 --port 8081 &
 
 # Start public WebSocket summarization service
-uvicorn summarization_service.main:app --host 0.0.0.0 --port 8082 &
+uvicorn summarization_service.main:app --host 0.0.0.0 --port 8082 --proxy-headers &
 
 # Start public podcast resolver service
 uvicorn podcast_audio_resolver_service.main:app --host 0.0.0.0 --port 8080 &
