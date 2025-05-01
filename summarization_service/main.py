@@ -20,6 +20,7 @@ def health_check():
 
 @app.websocket("/ws/summary/{job_id}")
 async def ws_summary(websocket: WebSocket, job_id: str):
+    await websocket.accept()
     await manager.connect(job_id, websocket)
     try:
         while True:
