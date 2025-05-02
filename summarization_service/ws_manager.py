@@ -6,7 +6,7 @@ class ConnectionManager:
         self.active: dict[str, list[WebSocket]] = {}
 
     async def connect(self, job_id: str, websocket: WebSocket):
-        await websocket.accept()
+        # await websocket.accept()
         self.active.setdefault(job_id, []).append(websocket)
 
     def disconnect(self, job_id: str, websocket: WebSocket):

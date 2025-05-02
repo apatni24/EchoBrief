@@ -13,6 +13,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+
+@app.websocket("/ws/summary/{job_id}")
+async def ws_summary(websocket: WebSocket, job_id: str):
+    await websocket.accept()                           # Must accept the handshake :contentReference[oaicite:2]{index=2}
+    await manager.connect(job_id, websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(job_id, websocket)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # or ["*"] for wide-open during testing
@@ -25,11 +36,3 @@ app.add_middleware(
 def health_check():
     return {"status": "summarization_service is running"}
 
-@app.websocket("/ws/summary/{job_id}")
-async def ws_summary(websocket: WebSocket, job_id: str):
-    await manager.connect(job_id, websocket)
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        manager.disconnect(job_id, websocket)
