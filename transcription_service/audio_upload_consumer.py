@@ -16,11 +16,11 @@ temp_msg = """[Speaker A] You're listening to TED Talks Daily where we bring you
 async def _handle_message(parsed_data):
     start_time = time.time()
     # delay 5s without blocking the main loop
-    await asyncio.sleep(1)
+    # await asyncio.sleep(1)
 
     # message_txt = temp_msg
 
-    message_txt = assemblyai_transcriber.transcribe_audio(parsed_data['file_path'])
+    message_txt = await asyncio.to_thread(assemblyai_transcriber.transcribe_audio(parsed_data['file_path']))
     end_time = time.time()
     total_time = end_time-start_time
     print(f"Transcribed and diarized data in {total_time}")
