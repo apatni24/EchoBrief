@@ -11,7 +11,8 @@ load_dotenv()
 
 frontend_url = os.getenv("FRONTEND_URL")
 
-app = FastAPI()
+app = FastAPI(root_path="/api",
+              server=[{"url": "https://echobrief-backend.onrender.com"}])
 
 origins = [
     frontend_url,   # React dev server
@@ -24,6 +25,7 @@ app.add_middleware(
     allow_credentials=True,           # <-- if you need to send cookies/auth headers
     allow_methods=["*"],              # <-- which HTTP methods are allowed
     allow_headers=["*"],              # <-- which headers are allowed
+    expose_headers=["*"]
 )
 
 class PodcastRequest(BaseModel):
