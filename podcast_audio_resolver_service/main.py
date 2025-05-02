@@ -11,8 +11,7 @@ load_dotenv()
 
 frontend_url = os.getenv("FRONTEND_URL")
 
-app = FastAPI(root_path="/api",
-              server=[{"url": "https://echobrief-backend.onrender.com"}])
+app = FastAPI()
 
 origins = [
     frontend_url,   # React dev server
@@ -32,7 +31,7 @@ class PodcastRequest(BaseModel):
     url: str
     summary_type: str # ts, ns, bs
 
-@app.post("/api/submit")
+@app.post("/submit")
 async def download_episode(request: PodcastRequest):
     url = request.url
 
