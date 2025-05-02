@@ -30,7 +30,7 @@ class PodcastRequest(BaseModel):
     url: str
     summary_type: str # ts, ns, bs
 
-@app.post("/submit")
+@app.post("/api/submit")
 async def download_episode(request: PodcastRequest):
     url = request.url
 
