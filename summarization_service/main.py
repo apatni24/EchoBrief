@@ -23,6 +23,8 @@ async def ws_summary(websocket: WebSocket, job_id: str):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(job_id, websocket)
+    except Exception as e:
+        print("Web Socket Error: ",e)
 
 app.add_middleware(
     CORSMiddleware,
