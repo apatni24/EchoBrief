@@ -15,7 +15,7 @@ temp_msg = """[Speaker A] You're listening to TED Talks Daily where we bring you
 
 async def _handle_message(parsed_data):
     start_time = time.time()
-    asyncio.sleep(1)
+    await asyncio.sleep(1)
     # delay 5s without blocking the main loop
     # await asyncio.sleep(1)
 
