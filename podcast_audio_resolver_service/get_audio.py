@@ -8,7 +8,9 @@ def get_episode_audio_from_spotify(episode_url):
     print("Fetching episode and show titles...")
     titles = get_show_and_episode_title(episode_url)
 
-    print(f"Podcast: {titles[1]}, Episode: {titles[0]}")
+    titles = [title.rstrip() for title in titles]
+
+    print(f"Podcast: \"{titles[1]}\", Episode: \"{titles[0]}\"")
 
     print("Fetching RSS feed...")
     rss_url = get_rss_feed_url(titles[1])

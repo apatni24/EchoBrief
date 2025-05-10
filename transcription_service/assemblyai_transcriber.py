@@ -1,6 +1,7 @@
 import assemblyai as aai
 import os
 from dotenv import load_dotenv
+import requests
 
 load_dotenv()
 
@@ -20,6 +21,14 @@ transcriber = aai.Transcriber(config=config)
 def transcribe_audio(file_path: str):
     print("Transcribing...")
     transcript = transcriber.transcribe(file_path, config=config)
+    
+    # url = "https://official-joke-api.appspot.com/random_joke"
+    # response = requests.get(url, timeout=10)
+    # response.raise_for_status()
+    # transcript = response.json()
+
+    # print(transcript)
+
     final_transcript = []
     print("Transcript:")
     for utterance in transcript.utterances:

@@ -2,38 +2,32 @@ import os
 import requests
 import feedparser
 
-def get_episode_audio_file_with_episode_title(feed, episode_title):
-    for entry in feed.entries:
-        print(f"Checking: {entry.title}")
-        if episode_title.lower() in entry.title.lower():
-            audio_url = entry.enclosures[0]['href']
-            audio_url = audio_url.split('?')[0]
-            print(f"Found Audio URL: {audio_url}")
-            
-            # Detect file extension from URL
-            ext = os.path.splitext(audio_url)[1]  # Gets '.m4a' or '.mp3'
-            if not ext:
-                ext = '.mp3'  # Default fallback
-            
-            # Generate safe filename
-            filename = episode_title.strip().replace(' ', '_').replace('/', '-') + ext
-            folder = 'audio_files'
-            os.makedirs(folder, exist_ok=True)
-            file_path = os.path.join(folder, filename)
-            
-            # Download the audio file
-            print(f"Downloading to {file_path} ...")
-            with requests.get(audio_url, stream=True) as r:
-                r.raise_for_status()
-                with open(file_path, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
-            
-            print(f"Download complete: {file_path}")
-            return file_path
-
-    print("Episode not found in RSS feed.")
-    return None
+def get_episode_audio_file_with_episode_title(episode_entry, episode_title):
+    audio_url = episode_entry.enclosures[0]['href']
+    audio_url = audio_url.split('?')[0]
+    print(f"Found Audio URL: {audio_url}")
+    
+    # Detect file extension from URL
+    ext = os.path.splitext(audio_url)[1]  # Gets '.m4a' or '.mp3'
+    if not ext:
+        ext = '.mp3'  # Default fallback
+    
+    # Generate safe filename
+    filename = episode_title.strip().replace(' ', '_').replace('/', '-') + ext
+    folder = 'audio_files'
+    os.makedirs(folder, exist_ok=True)
+    file_path = os.path.join(folder, filename)
+    
+    # Download the audio file
+    print(f"Downloading to {file_path} ...")
+    with requests.get(audio_url, stream=True) as r:
+        r.raise_for_status()
+        with open(file_path, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+    
+    print(f"Download complete: {file_path}")
+    return file_path
 
 def download_episode_audio_with_episode_id(rss_url, apple_episode_id):
     """
@@ -82,19 +76,25 @@ def get_show_title(feed):
 def get_show_summary(feed):
     return feed.feed.summary
 
-def get_episode_summary(feed, episode_title):
-    for entry in feed.entries:
-        print(f"Checking: {entry.title}")
-        if episode_title.lower() in entry.title.lower():
-            return entry.summary
-    return None
 
 def download_audio_and_get_metadata(rss_url, episode_title):
     feed = feedparser.parse(rss_url)
-    summary = get_episode_summary(feed, episode_title)
+    episode_entry = None
+    for entry in feed.entries:
+        print(f"Checking: \"{entry.title}\"")
+        if(episode_title.lower() in entry.title.lower()):
+            episode_entry = entry
+            break
+    if not episode_entry:
+        return {
+            "file_path": None
+        }
+    summary = episode_entry.summary
+    print(summary)
     show_title = get_show_title(feed)
+    print(show_title)
     show_summary = get_show_summary(feed)
-    file_path = get_episode_audio_file_with_episode_title(feed, episode_title)
+    file_path = get_episode_audio_file_with_episode_title(episode_entry, episode_title)
     return {
         "file_path": file_path,
         "metadata": {

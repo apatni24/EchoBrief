@@ -1,64 +1,55 @@
+# summarization_service/transcription_complete_consumer.py
 from redis_stream_client import redis_client, TRANSCRIPTION_COMPLETE_STREAM
 from summarization_service import summarize
-import asyncio
-import json
 from summarization_service.ws_manager import manager
+import json, time, asyncio
 
-async def consume_transcription_completed():
-    print("🎧 Trimming old stream entries and starting consumer...")
+def consume_transcription_completed(loop):
+    print("🎧 Starting consumer…")
     redis_client.xtrim(TRANSCRIPTION_COMPLETE_STREAM, maxlen=0)
-    last_id = "$"  # only listen to *new* messages
-    print("Listening for transcription_complete events...")
+    last_id = "0"
 
     try:
         while True:
-            messages = redis_client.xread({TRANSCRIPTION_COMPLETE_STREAM: last_id}, block=60000, count=1)
-            for stream, entries in messages:
+            messages = redis_client.xread(
+                {TRANSCRIPTION_COMPLETE_STREAM: last_id},
+                block=60000, count=1
+            )
+            for _, entries in messages:
                 for msg_id, data in entries:
-                    # print(f"🎧 Received: {data}")
                     last_id = msg_id
-
-                    raw_json = data.get('data')
-                    if raw_json:
-                        try:
-                            parsed_data = json.loads(raw_json)
-                        except json.JSONDecodeError as e:
-                            print("❌ Failed to decode JSON:", e)
-                            continue
-                    else:
+                    raw = data.get("data")
+                    if not raw:
                         continue
+                    if isinstance(raw, bytes):
+                        raw = raw.decode()
+                    parsed = json.loads(raw)
 
-                    job_id = parsed_data['job_id']
-                    summary_type = parsed_data['summary_type']
-                    transcript = parsed_data['transcript']
-                    episode_summary = parsed_data['metadata']['summary']
-                    show_title = parsed_data['metadata']['show_title']
-                    show_summary = parsed_data['metadata']['show_summary']
+                    # do your summarization… 
+                    summary = summarize.get_summary(
+                        parsed["summary_type"],
+                        parsed["transcript"],
+                        parsed["metadata"]["summary"],
+                        parsed["metadata"]["show_title"],
+                        parsed["metadata"]["show_summary"],
+                    )
 
-                    # Summarize transcript using llm
-                    try:
-                        summary = summarize.get_summary(
-                            summary_type,
-                            transcript,
-                            episode_summary,
-                            show_title,
-                            show_summary,
-                        )
-                        print(summary)
-                    except Exception as e:
-                        print(f"Summarization failed for job {job_id}: {e}")
-                        continue
-                    await manager.broadcast(job_id, {
-                        "job_id": job_id,
+                    payload = {
+                        "job_id": parsed["job_id"],
                         "status": "done",
                         "summary": summary,
-                    })
-            await asyncio.sleep(0.1)
-    except asyncio.CancelledError:
-        print("🛑 Consumer task cancelled — shutting down gracefully.")
-    except Exception as e:
-        print("Error in consumer:", e)
+                    }
 
+                    # schedule the async broadcast on the main loop
+                    loop.call_soon_threadsafe(
+                        asyncio.create_task,
+                        manager.broadcast(parsed["job_id"], payload)
+                    )
+
+            time.sleep(0.1)
+
+    except Exception as e:
+        print("Consumer error:", e)
 
 if __name__ == "__main__":
     consume_transcription_completed()

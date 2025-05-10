@@ -2,16 +2,20 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
-from summarization_service import transcription_complete_consumer
+
+from summarization_service.transcription_complete_consumer import consume_transcription_completed
 from summarization_service.ws_manager import manager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(transcription_complete_consumer.consume_transcription_completed())
+    loop = asyncio.get_running_loop()
+    # launch your blocking consumer in a thread, passing the loop
+    asyncio.create_task(asyncio.to_thread(consume_transcription_completed, loop))
     yield
-    task.cancel()
 
 app = FastAPI(lifespan=lifespan)
+# … routes, WebSocket endpoints, middleware, etc.
+
 
 
 @app.websocket("/ws/summary/{job_id}")
