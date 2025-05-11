@@ -13,9 +13,5 @@ uvicorn summarization_service.main:app \
   --port 8082 \
   --proxy-headers &
 
-# 3) Wait for port availability instead of socket file
-echo "⏳ Waiting for services to start..."
-sleep 5  # Render needs brief initialization time
-
-# 4) Start NGINX with Render-optimized config
+# 3) Start NGINX with Render-optimized config
 nginx -g 'daemon off;'

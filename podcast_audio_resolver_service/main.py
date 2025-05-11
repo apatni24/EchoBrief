@@ -43,22 +43,28 @@ async def download_episode(request: PodcastRequest):
         else:
             raise HTTPException(status_code=400, detail="Unsupported podcast platform")
         
+        if "error" in data:
+            return {
+                "message": data["error"],
+                "error": True
+            }
+        
         data['summary_type'] = request.summary_type
         data['job_id'] = str(uuid.uuid4())
-        
-        print(data)
         
         if data['file_path']:
             emit_audio_uploaded(data)
         else:
             return {
-                "message": "No Episode Found"
+                "message": "No Episode Found",
+                "error": True
             }
 
 
         return {
             "message": "Download successful",
-            "data": data
+            "data": data,
+            "error": False
         }
 
     except Exception as e:

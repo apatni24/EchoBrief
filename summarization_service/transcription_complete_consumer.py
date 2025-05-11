@@ -2,7 +2,7 @@
 from redis_stream_client import redis_client, TRANSCRIPTION_COMPLETE_STREAM
 from summarization_service import summarize
 from summarization_service.ws_manager import manager
-import json, time, asyncio
+import json, asyncio
 
 def consume_transcription_completed(loop):
     print("🎧 Starting consumer…")
@@ -46,7 +46,6 @@ def consume_transcription_completed(loop):
                         manager.broadcast(parsed["job_id"], payload)
                     )
 
-            time.sleep(0.1)
 
     except Exception as e:
         print("Consumer error:", e)

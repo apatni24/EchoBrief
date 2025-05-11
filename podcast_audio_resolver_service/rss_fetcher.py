@@ -2,9 +2,13 @@ import hashlib
 import requests
 import time
 import re
+import os
+from dotenv import load_dotenv
 
-API_KEY = 'QRKETXXMUYM3ZEDVPT9U'
-API_SECRET = 'b$HAKs4prEqyNkJvmU4^mhZwDDAQn##LLfyRgvAd'
+load_dotenv()
+
+API_KEY = os.getenv("PODCAST_INDEX_API_KEY")
+API_SECRET = os.getenv("PODCAST_INDEX_API_SECRET")
 
 def get_rss_feed_url(podcast_title):
     url = f"https://api.podcastindex.org/api/1.0/search/bytitle?q={podcast_title}"

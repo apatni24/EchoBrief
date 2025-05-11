@@ -2,6 +2,8 @@ from podcast_audio_resolver_service.spotify_scraper import get_show_and_episode_
 from podcast_audio_resolver_service import apple_scraper
 from podcast_audio_resolver_service.rss_fetcher import get_rss_feed_url, get_rss_from_apple_link
 from podcast_audio_resolver_service.audio_extractor import download_audio_and_get_metadata
+from podcast_audio_resolver_service.duration_checker import get_duration_from_title
+
 import re
 
 def get_episode_audio_from_spotify(episode_url):
@@ -18,6 +20,14 @@ def get_episode_audio_from_spotify(episode_url):
     if not rss_url:
         print("RSS feed not found.")
         return
+    
+        # Check episode duration
+    duration = get_duration_from_title(rss_url, titles[0])
+    if duration and duration > 1800:
+        return {
+            "error": "Episode is longer than 30 minutes. Only shorter episodes are supported currently."
+        }
+
 
     print("Extracting audio URL...")
     data = download_audio_and_get_metadata(rss_url, titles[0])
@@ -44,6 +54,14 @@ def get_episode_audio_from_apple(apple_episode_url):
     if not rss_url:
         print("Failed to retrieve RSS feed.")
         return
+    
+        # Check episode duration
+    duration = get_duration_from_title(rss_url, episode_name)
+    if duration and duration > 1800:
+        return {
+            "error": "Episode is longer than 30 minutes. Only shorter episodes are supported currently."
+        }
+
 
     # Download Audio File
     data = download_audio_and_get_metadata(rss_url, episode_name)
