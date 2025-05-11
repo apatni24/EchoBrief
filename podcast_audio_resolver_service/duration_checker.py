@@ -1,5 +1,8 @@
 import requests
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 PODCAST_INDEX_BASE_URL = "https://api.podcastindex.org/api/1.0"
 API_KEY = os.getenv("PODCAST_INDEX_API_KEY")
