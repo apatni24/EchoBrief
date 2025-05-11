@@ -25,5 +25,4 @@ jobs:
 
     - name: Run tests
       run: |
-      ENV=test pytest
-
+        ENV=test pytest
