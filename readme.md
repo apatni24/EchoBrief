@@ -23,7 +23,7 @@ This project demonstrates:
 
 ## 🧩 Architecture
 
-![EchoBrief Architecture](./assets/architecture.svg)
+<img src="./assets/architecture.svg" alt="EchoBrief Architecture" width="600"/>
 
 *Note: Mermaid diagrams may not render correctly on all platforms; hence, a static image is provided.*
 
