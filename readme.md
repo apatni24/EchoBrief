@@ -99,6 +99,18 @@ EchoBrief supports the following summary formats:
 
 ---
 
+### 🐳 Microservices & Deployment Note
+
+Although EchoBrief uses a **single Dockerfile**, the architecture internally consists of **distinct microservices** — each running on **separate ports within the same container**. An **NGINX reverse proxy** handles request routing to the appropriate service based on the path or protocol (e.g., WebSockets vs REST). This approach simplifies deployment while preserving modularity, inter-service isolation, and scalability.
+
+For local development and deployment, this means:
+
+- Services remain **independently testable**
+- Event flow and APIs are **loosely coupled**
+- Only one container needs to be run, reducing hosting complexity
+
+---
+
 ## 📉 API Rate Limiting
 
 To comply with **ChatGroq API's per-minute token limit**, EchoBrief enforces:
