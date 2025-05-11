@@ -99,7 +99,7 @@ EchoBrief supports the following summary formats:
 
 ---
 
-## Microservices & Deployment Note
+## 🐳 Microservices & Deployment Note
 
 Although EchoBrief uses a **single Dockerfile**, the architecture internally consists of **distinct microservices** — each running on **separate ports within the same container**. An **NGINX reverse proxy** handles request routing to the appropriate service based on the path or protocol (e.g., WebSockets vs REST). This approach simplifies deployment while preserving modularity, inter-service isolation, and scalability.
 
