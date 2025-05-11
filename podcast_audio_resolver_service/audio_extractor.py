@@ -36,12 +36,10 @@ def download_episode_audio_with_episode_id(rss_url, apple_episode_id):
     feed = feedparser.parse(rss_url)
 
     for entry in feed.entries:
-        print(entry)
         guid = entry.get('guid', '')
         link = entry.get('link', '')
 
         if apple_episode_id in guid or apple_episode_id in link:
-            print(f"Matched Episode: {entry.title}")
             audio_url = entry.enclosures[0]['href']
 
             # Get file extension from URL
@@ -81,7 +79,6 @@ def download_audio_and_get_metadata(rss_url, episode_title):
     feed = feedparser.parse(rss_url)
     episode_entry = None
     for entry in feed.entries:
-        print(f"Checking: \"{entry.title}\"")
         if(episode_title.lower() in entry.title.lower()):
             episode_entry = entry
             break
@@ -90,9 +87,7 @@ def download_audio_and_get_metadata(rss_url, episode_title):
             "file_path": None
         }
     summary = episode_entry.summary
-    print(summary)
     show_title = get_show_title(feed)
-    print(show_title)
     show_summary = get_show_summary(feed)
     file_path = get_episode_audio_file_with_episode_title(episode_entry, episode_title)
     return {
