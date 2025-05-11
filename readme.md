@@ -1,6 +1,6 @@
 # 🎧 EchoBrief — Scalable Podcast Summarization Backend
 
-**EchoBrief** is a fast, event-driven backend system that transcribes and summarizes podcast episodes in real time. Users simply paste a podcast episode URL, choose a summary format (bullet points, narrative, or takeaways), and receive a high-quality summary within a minute for episodes up to 30 minutes.
+**EchoBrief** is a event-driven backend system that transcribes and summarizes podcast episodes in real time. Users simply paste a podcast episode URL, choose a summary format (bullet points, narrative, or takeaways), and receive a high-quality summary within a minute for episodes up to 30 minutes.
 
 > ⏱️ **Summarizes a 30-minute podcast in <90 seconds**  
 > 🌍 Deployed on low-latency infrastructure (Singapore – Render + Upstash)
