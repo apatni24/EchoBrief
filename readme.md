@@ -9,15 +9,13 @@
 
 ## 🧠 Why This Project Stands Out
 
-This project demonstrates:
+EchoBrief was built to solve real-world backend engineering challenges. It showcases:
 
-- ⚙️ Real-world **event-driven microservice architecture**
-- 🌐 Efficient **streaming workflows** using Redis Streams
-- 🧠 Use of **LLMs (LLaMA 3.3 70B Versatile)** for high-quality summarization
-- 🔁 **WebSocket-based updates** for live frontend interaction
-- 🐳 Clean deployment with **Docker + NGINX reverse proxy**
-- 🚀 Built-in **cold start mitigation** for smoother UX
-- 📦 Modular design across audio, transcription, and summarization layers
+- 🔄 Loose coupling across services using Redis Streams
+- 📡 Real-time updates with WebSockets for instant feedback
+- 🧠 Scalable summarization via LLaMA 3.3 70B LLMs
+- 🐳 Unified Dockerized deployment with internal NGINX routing
+- 🚦 Thoughtful design to handle cold starts and API rate limits
 
 ---
 
@@ -92,9 +90,11 @@ echobrief/
 
 ## 📄 Summary Types Supported
 
-- 🔹 Bullet Points
-- 📘 Narrative (Story Format)
-- 📌 Key Takeaways
+EchoBrief supports the following summary formats:
+
+- Bullet point breakdowns
+- Story-style narrative summaries
+- Key actionable takeaways
 
 ---
 
