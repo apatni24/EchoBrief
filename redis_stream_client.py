@@ -4,19 +4,28 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Load URL from env or paste your Upstash URL here
-upstash_redis_host = os.getenv("UPSTASH_REDIS_HOST")
-upstash_redis_port = os.getenv("UPSTASH_REDIS_PORT")
-upstash_redis_password = os.getenv("UPSTASH_REDIS_PASSWORD")
+ENV = os.getenv("ENV", "dev")  # default to dev
 
+# Provide dummy values during tests
+if ENV == "test":
+    upstash_redis_host = "localhost"
+    upstash_redis_port = 6379
+    upstash_redis_password = None
+else:
+    upstash_redis_host = os.getenv("UPSTASH_REDIS_HOST")
+    upstash_redis_port = int(os.getenv("UPSTASH_REDIS_PORT", "0"))  # convert to int
+    upstash_redis_password = os.getenv("UPSTASH_REDIS_PASSWORD")
 
+    # Fail fast if any required config is missing
+    if not all([upstash_redis_host, upstash_redis_port, upstash_redis_password]):
+        raise RuntimeError("Missing required Upstash Redis environment variables")
 
 # Create the Redis client
 redis_client = redis.Redis(
     host=upstash_redis_host,
     port=upstash_redis_port,
     password=upstash_redis_password,
-    ssl=True,                  # TLS is required for Upstash
+    ssl=(ENV != "test"),            # TLS only for non-test envs
     decode_responses=True
 )
 

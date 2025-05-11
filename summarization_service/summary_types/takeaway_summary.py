@@ -1,9 +1,4 @@
 import os
-from dotenv import load_dotenv
-
-load_dotenv()
-
-RANDOM_STRING = os.getenv("RANDOM_STRING")
 
 def get_system_message():
     return f"""You are a podcast summarizer focused on delivering clear, practical takeaways.
