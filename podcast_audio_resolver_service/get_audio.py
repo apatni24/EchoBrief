@@ -19,10 +19,13 @@ def get_episode_audio_from_spotify(episode_url):
 
     if not rss_url:
         print("RSS feed not found.")
-        return
+        return {
+            "error": "RSS feed not found."
+        }
     
         # Check episode duration
     duration = get_duration_from_title(rss_url, titles[0])
+    print(f"Duration of {titles[0]}: {duration}")
     if duration and duration > 1800:
         return {
             "error": "Episode is longer than 30 minutes. Only shorter episodes are supported currently."

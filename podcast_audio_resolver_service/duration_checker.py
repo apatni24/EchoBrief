@@ -14,16 +14,17 @@ import base64
 import hmac
 
 def _get_auth_headers():
-    now = int(time.time())
-    data_to_sign = f"{API_KEY}{API_SECRET}{now}"
-    signature = hmac.new(API_SECRET.encode(), data_to_sign.encode(), hashlib.sha1).hexdigest()
+    epoch_time = int(time.time())
+    data_to_hash = API_KEY + API_SECRET + str(epoch_time)
+    sha_1 = hashlib.sha1(data_to_hash.encode()).hexdigest()
 
-    return {
-        "User-Agent": "EchoBrief",
-        "X-Auth-Date": str(now),
-        "X-Auth-Key": API_KEY,
-        "Authorization": signature
+    headers = {
+        'X-Auth-Date': str(epoch_time),
+        'X-Auth-Key': API_KEY,
+        'Authorization': sha_1,
+        'User-Agent': 'podcasting-index-python-client'
     }
+    return headers
 
 def get_duration_from_title(feed_url, episode_title):
     try:

@@ -1,6 +1,6 @@
 from redis_stream_client import redis_client, AUDIO_UPLOADED_STREAM
 from transcription_service import assemblyai_transcriber, transcription_complete_producer
-import asyncio, json
+import asyncio, json, time
 
 
 temp_msg = """[Speaker A] You're listening to TED Talks Daily where we bring you new ideas to spark your curiosity every day. I'm your host, Elise Hume. People living across the South Pacific in island nations like Polynesia and Micronesia make up less than 1% of global greenhouse gas emissions and yet they are among the most vulnerable to the threat of climate change. But climate justice advocate Fenton Lutana Tabua doesn't want to feed into the narrative that they are only victims of the climate crisis waiting to be saved. In his 2024 talk, Fenton, a Fiji native himself shares the importance of using community led storytelling to break stereotypes of victimhood.
