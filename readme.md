@@ -20,6 +20,14 @@ EchoBrief was built to solve real-world backend engineering challenges. It showc
 
 ---
 
+### 🐳 Why Only One Dockerfile in a Microservices Setup?
+
+Although EchoBrief follows a microservices architecture, all services are hosted on a single server and exposed on different ports. An NGINX reverse proxy is used to route traffic appropriately.
+
+This design choice avoids multiple Dockerfiles and leverages Render’s free-tier constraints efficiently.
+
+---
+
 ## 🧩 Architecture
 
 <img src="./assets/architecture.svg" alt="EchoBrief Architecture" width="500"/>
@@ -96,18 +104,6 @@ EchoBrief supports the following summary formats:
 - Bullet point breakdowns
 - Story-style narrative summaries
 - Key actionable takeaways
-
----
-
-## 🐳 Microservices & Deployment Note
-
-Although EchoBrief uses a **single Dockerfile**, the architecture internally consists of **distinct microservices** — each running on **separate ports within the same container**. An **NGINX reverse proxy** handles request routing to the appropriate service based on the path or protocol (e.g., WebSockets vs REST). This approach simplifies deployment while preserving modularity, inter-service isolation, and scalability.
-
-For local development and deployment, this means:
-
-- Services remain **independently testable**
-- Event flow and APIs are **loosely coupled**
-- Only one container needs to be run, reducing hosting complexity
 
 ---
 
