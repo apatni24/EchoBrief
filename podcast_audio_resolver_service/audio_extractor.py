@@ -72,29 +72,65 @@ def get_show_title(feed):
     return feed.feed.title
 
 def get_show_summary(feed):
-    return feed.feed.summary
+    try:
+        return feed.feed.summary
+    except :
+        return ""
+
+
+def duration_to_seconds(duration_str: str) -> int:
+    """
+    Convert a duration string 'HH:MM:SS' into total seconds.
+    """
+    hours, minutes, seconds = map(int, duration_str.split(':'))
+    return hours * 3600 + minutes * 60 + seconds
+
 
 
 def download_audio_and_get_metadata(rss_url, episode_title):
-    feed = feedparser.parse(rss_url)
-    episode_entry = None
-    for entry in feed.entries:
-        if(episode_title.lower() in entry.title.lower()):
-            episode_entry = entry
-            break
-    if not episode_entry:
+    try:
+        print("processing rss url")
+        feed = feedparser.parse(rss_url)
+        episode_entry = None
+        for entry in feed.entries:
+            if(episode_title.lower() in entry.title.lower()):
+                episode_entry = entry
+                break
+        if not episode_entry:
+            return {
+                "file_path": None
+            }
+        print(episode_entry)
+        duration = episode_entry.itunes_duration
+        if(duration):
+            try:
+                duration = duration_to_seconds(duration)
+            except:
+                duration = int(duration)
+        print(duration)
+        if duration and duration > 1800:
+            return {
+                "error": "Episode is longer than 30 minutes. Only shorter episodes are supported currently."
+            }
+        summary = episode_entry.summary
+        show_title = get_show_title(feed)
+        show_summary = get_show_summary(feed)
+        file_path = get_episode_audio_file_with_episode_title(episode_entry, episode_title)
+        image_url = episode_entry.image.href
+        
         return {
-            "file_path": None
+            "file_path": file_path,
+            "metadata": {
+                "summary": summary,
+                "show_title": show_title,
+                "show_summary": show_summary,
+                "episode_title": episode_title,
+                "image_url": image_url,
+                "duration": duration
+            }
         }
-    summary = episode_entry.summary
-    show_title = get_show_title(feed)
-    show_summary = get_show_summary(feed)
-    file_path = get_episode_audio_file_with_episode_title(episode_entry, episode_title)
-    return {
-        "file_path": file_path,
-        "metadata": {
-            "summary": summary,
-            "show_title": show_title,
-            "show_summary": show_summary
+    except Exception as err:
+        print(err)
+        return {
+            "error": err
         }
-    }

@@ -2,7 +2,9 @@ from podcast_audio_resolver_service.spotify_scraper import get_show_and_episode_
 from podcast_audio_resolver_service import apple_scraper
 from podcast_audio_resolver_service.rss_fetcher import get_rss_feed_url, get_rss_from_apple_link
 from podcast_audio_resolver_service.audio_extractor import download_audio_and_get_metadata
-from podcast_audio_resolver_service.duration_checker import get_duration_from_title
+from podcast_audio_resolver_service.duration_checker import get_duration_from_episode
+from podcast_audio_resolver_service.podcast_index_episode_byfeedurl import get_episode_from_title
+from podcast_audio_resolver_service.get_image import get_image_url_from_episode
 
 import re
 
@@ -24,19 +26,21 @@ def get_episode_audio_from_spotify(episode_url):
         }
     
         # Check episode duration
-    duration = get_duration_from_title(rss_url, titles[0])
-    print(f"Duration of {titles[0]}: {duration}")
-    if duration and duration > 1800:
-        return {
-            "error": "Episode is longer than 30 minutes. Only shorter episodes are supported currently."
-        }
+    # episode = get_episode_from_title(rss_url, titles[0])
+    # duration = episode.get("duration", 0)
+    # print(f"Duration of {titles[0]}: {duration}")
+    # if duration and duration > 1800:
+    #     return {
+    #         "error": "Episode is longer than 30 minutes. Only shorter episodes are supported currently."
+    #     }
 
 
     print("Extracting audio URL...")
     data = download_audio_and_get_metadata(rss_url, titles[0])
 
     if data:
-        print(f"Audio File URL: {data['file_path']}")
+        # print(f"Audio File URL: {data['file_path']}")
+        # data["metadata"]["image_url"] = get_image_url_from_episode(episode)
         return data
     else:
         print("Failed to retrieve audio URL.")
@@ -59,17 +63,20 @@ def get_episode_audio_from_apple(apple_episode_url):
         return
     
         # Check episode duration
-    duration = get_duration_from_title(rss_url, episode_name)
-    if duration and duration > 1800:
-        return {
-            "error": "Episode is longer than 30 minutes. Only shorter episodes are supported currently."
-        }
+    # episode = get_episode_from_title(rss_url, episode_name)
+    # duration = episode.get("duration", 0)
+    # duration = 1000
+    # if duration and duration > 1800:
+    #     return {
+    #         "error": "Episode is longer than 30 minutes. Only shorter episodes are supported currently."
+    #     }
 
 
     # Download Audio File
     data = download_audio_and_get_metadata(rss_url, episode_name)
     if data:
-        print(f"Audio file saved at: {data['file_path']}")
+        # print(f"Audio file saved at: {data['file_path']}")
+        # data["metadata"]["image_url"] = get_image_url_from_episode(episode)
         return data
     else:
         print("Failed to download audio.")

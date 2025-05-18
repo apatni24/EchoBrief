@@ -34,24 +34,5 @@ def _get_auth_headers():
     }
     return headers
 
-def get_duration_from_title(feed_url, episode_title):
-    try:
-        response = requests.get(
-            f"{PODCAST_INDEX_BASE_URL}/episodes/byfeedurl",
-            params={"url": feed_url},
-            headers=_get_auth_headers(),
-            timeout=5
-        )
-        response.raise_for_status()
-        episodes = response.json().get("items", [])
-
-        for ep in episodes:
-            if episode_title.lower() in ep.get("title", "").lower():
-                return ep.get("duration", 0)  # in seconds
-
-    except requests.exceptions.RequestException as e:
-        print(f"[PodcastIndex] Request failed: {e}")
-    except Exception as e:
-        print(f"[PodcastIndex] Unexpected error: {e}")
-
-    return None
+def get_duration_from_episode(episode):
+    return episode.get("duration", 0)
