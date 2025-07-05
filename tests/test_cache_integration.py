@@ -236,12 +236,25 @@ class TestCacheIntegration:
     def test_cache_stats_integration(self, mock_redis):
         """Test cache statistics integration"""
         
-        # Mock cache keys
-        mock_redis.keys.return_value = [
+        # Mock cache keys for both episode and transcript caches
+        episode_keys = [
             "episode:apple:123:ts",
             "episode:spotify:456:bs",
             "episode:apple:789:ns"
         ]
+        transcript_keys = [
+            "transcript:abc123:ts",
+            "transcript:def456:bs"
+        ]
+        
+        def mock_keys(pattern):
+            if pattern == "episode:*":
+                return episode_keys
+            elif pattern == "transcript:*":
+                return transcript_keys
+            return []
+        
+        mock_redis.keys.side_effect = mock_keys
         
         # Get cache stats
         response = client.get("/cache/stats")
@@ -249,7 +262,8 @@ class TestCacheIntegration:
         assert response.status_code == 200
         data = response.json()
         assert data["episode_cache_count"] == 3
-        assert data["total_cached_items"] == 3
+        assert data["transcript_cache_count"] == 2
+        assert data["total_cached_items"] == 5
 
     @patch('redis_stream_client.redis_client')
     def test_cache_invalidation_integration(self, mock_redis):
@@ -272,9 +286,19 @@ class TestCacheIntegration:
     def test_cache_clear_admin_integration(self, mock_redis):
         """Test admin cache clear integration"""
         
-        # Mock cache keys and deletion
-        mock_redis.keys.return_value = ["episode:apple:123:ts", "episode:spotify:456:bs"]
-        mock_redis.delete.return_value = 2
+        # Mock cache keys for both episode and transcript caches
+        episode_keys = ["episode:apple:123:ts", "episode:spotify:456:bs"]
+        transcript_keys = ["transcript:abc123:ts", "transcript:def456:bs"]
+        
+        def mock_keys(pattern):
+            if pattern == "episode:*":
+                return episode_keys
+            elif pattern == "transcript:*":
+                return transcript_keys
+            return []
+        
+        mock_redis.keys.side_effect = mock_keys
+        mock_redis.delete.return_value = 1
         
         # Clear cache with admin key
         response = client.delete("/cache/clear?admin_key=default-admin-key")
@@ -283,9 +307,9 @@ class TestCacheIntegration:
         data = response.json()
         assert data["success"] is True
         
-        # Verify all keys were deleted
-        mock_redis.keys.assert_called_once_with("episode:*")
-        mock_redis.delete.assert_called_once_with("episode:apple:123:ts", "episode:spotify:456:bs")
+        # Verify both episode and transcript keys were checked and deleted
+        assert mock_redis.keys.call_count == 2
+        assert mock_redis.delete.call_count == 2
 
     def test_cache_key_generation_consistency(self):
         """Test that cache keys are generated consistently"""
@@ -344,4 +368,29 @@ class TestCacheIntegration:
         
         # Should be very fast (< 10ms)
         assert (end_time - start_time) < 0.01
-        assert result is not None 
+        assert result is not None
+
+    @patch('redis_stream_client.redis_client')
+    def test_transcript_cache_integration(self, mock_redis):
+        """Test transcript cache integration"""
+        
+        # Mock transcript cache miss then hit
+        mock_redis.get.side_effect = [None, json.dumps({"summary": "Cached transcript summary"})]
+        
+        # Test transcript cache miss
+        transcript = "This is a test transcript content"
+        summary_type = "ts"
+        
+        result1 = CacheService.get_cached_transcript(transcript, summary_type)
+        assert result1 is None
+        
+        # Test transcript cache hit
+        result2 = CacheService.get_cached_transcript(transcript, summary_type)
+        assert result2 is not None
+        assert result2["summary"] == "Cached transcript summary"
+        
+        # Verify correct keys were used
+        expected_key = f"transcript:{CacheService._generate_transcript_hash(transcript)}:{summary_type}"
+        assert mock_redis.get.call_count == 2
+        assert mock_redis.get.call_args_list[0][0][0] == expected_key
+        assert mock_redis.get.call_args_list[1][0][0] == expected_key 

@@ -7,13 +7,15 @@ from typing import Optional, Dict, Any
 from redis_stream_client import redis_client
 
 class CacheService:
-    """Episode-level caching service for EchoBrief"""
+    """Multi-layer caching service for EchoBrief"""
     
-    # Cache prefix
+    # Cache prefixes
     EPISODE_CACHE_PREFIX = "episode"
+    TRANSCRIPT_CACHE_PREFIX = "transcript"
     
     # TTL values (in seconds) - 7 days
     EPISODE_CACHE_TTL = 7 * 24 * 60 * 60
+    TRANSCRIPT_CACHE_TTL = 7 * 24 * 60 * 60
     
     @staticmethod
     def _generate_episode_key(platform: str, episode_id: str, summary_type: str) -> str:
@@ -108,10 +110,12 @@ class CacheService:
         try:
             # Count episode cache keys
             episode_keys = len(redis_client.keys(f"{CacheService.EPISODE_CACHE_PREFIX}:*"))
+            transcript_keys = len(redis_client.keys(f"{CacheService.TRANSCRIPT_CACHE_PREFIX}:*"))
             
             return {
                 "episode_cache_count": episode_keys,
-                "total_cached_items": episode_keys
+                "transcript_cache_count": transcript_keys,
+                "total_cached_items": episode_keys + transcript_keys
             }
             
         except Exception as e:
@@ -119,15 +123,96 @@ class CacheService:
             return {"error": str(e)}
     
     @staticmethod
-    def clear_cache() -> bool:
-        """Clear all episode cache - ADMIN ONLY"""
+    def _generate_transcript_key(transcript_hash: str, summary_type: str) -> str:
+        """Generate cache key for transcript-level caching"""
+        return f"{CacheService.TRANSCRIPT_CACHE_PREFIX}:{transcript_hash}:{summary_type}"
+    
+    @staticmethod
+    def _generate_transcript_hash(transcript: str) -> str:
+        """Generate hash for transcript content"""
+        return hashlib.sha256(transcript.encode('utf-8')).hexdigest()
+    
+    @staticmethod
+    def get_cached_transcript(transcript: str, summary_type: str) -> Optional[Dict[str, Any]]:
+        """Get cached transcript summary"""
         try:
-            keys = redis_client.keys(f"{CacheService.EPISODE_CACHE_PREFIX}:*")
-            if keys:
-                redis_client.delete(*keys)
-                print(f"🧹 Cleared {len(keys)} cached episodes")
-            else:
-                print("🧹 No cached episodes to clear")
+            transcript_hash = CacheService._generate_transcript_hash(transcript)
+            key = CacheService._generate_transcript_key(transcript_hash, summary_type)
+            cached_data = redis_client.get(key)
+            
+            if cached_data:
+                data = json.loads(cached_data)
+                print(f"🎯 Transcript Cache HIT: Found cached transcript for {summary_type}")
+                return data
+            
+            print(f"❌ Transcript Cache MISS: No cached transcript for {summary_type}")
+            return None
+            
+        except Exception as e:
+            print(f"⚠️ Transcript cache error: {e}")
+            return None
+    
+    @staticmethod
+    def set_cached_transcript(transcript: str, summary_type: str, data: Dict[str, Any]) -> bool:
+        """Cache transcript summary"""
+        try:
+            transcript_hash = CacheService._generate_transcript_hash(transcript)
+            key = CacheService._generate_transcript_key(transcript_hash, summary_type)
+            cache_data = {
+                **data,
+                "cached_at": time.time(),
+                "cache_ttl": CacheService.TRANSCRIPT_CACHE_TTL,
+                "transcript_hash": transcript_hash
+            }
+            
+            redis_client.setex(
+                key, 
+                CacheService.TRANSCRIPT_CACHE_TTL, 
+                json.dumps(cache_data)
+            )
+            
+            print(f"💾 Cached transcript for {summary_type}")
+            return True
+            
+        except Exception as e:
+            print(f"⚠️ Transcript cache set error: {e}")
+            return False
+    
+    @staticmethod
+    def invalidate_specific_transcript(transcript: str, summary_type: str) -> bool:
+        """Invalidate a specific transcript cache entry"""
+        try:
+            transcript_hash = CacheService._generate_transcript_hash(transcript)
+            key = CacheService._generate_transcript_key(transcript_hash, summary_type)
+            result = redis_client.delete(key)
+            if result:
+                print(f"🗑️ Invalidated transcript cache for {summary_type}")
+            return bool(result)
+        except Exception as e:
+            print(f"⚠️ Transcript cache invalidation error: {e}")
+            return False
+    
+    @staticmethod
+    def clear_cache() -> bool:
+        """Clear all cache - ADMIN ONLY"""
+        try:
+            episode_keys = redis_client.keys(f"{CacheService.EPISODE_CACHE_PREFIX}:*")
+            transcript_keys = redis_client.keys(f"{CacheService.TRANSCRIPT_CACHE_PREFIX}:*")
+            
+            total_cleared = 0
+            if episode_keys:
+                redis_client.delete(*episode_keys)
+                total_cleared += len(episode_keys)
+                print(f"🧹 Cleared {len(episode_keys)} cached episodes")
+            
+            if transcript_keys:
+                redis_client.delete(*transcript_keys)
+                total_cleared += len(transcript_keys)
+                print(f"🧹 Cleared {len(transcript_keys)} cached transcripts")
+            
+            if total_cleared == 0:
+                print("🧹 No cached items to clear")
+            
             return True
             
         except Exception as e:

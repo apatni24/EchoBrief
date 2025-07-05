@@ -14,7 +14,8 @@ class TestCacheEndpoints:
         with patch('cache_service.CacheService.get_cache_stats') as mock_stats:
             mock_stats.return_value = {
                 "episode_cache_count": 5,
-                "total_cached_items": 5
+                "transcript_cache_count": 3,
+                "total_cached_items": 8
             }
             
             response = client.get("/cache/stats")
@@ -22,7 +23,8 @@ class TestCacheEndpoints:
             assert response.status_code == 200
             data = response.json()
             assert data["episode_cache_count"] == 5
-            assert data["total_cached_items"] == 5
+            assert data["transcript_cache_count"] == 3
+            assert data["total_cached_items"] == 8
             mock_stats.assert_called_once()
 
     def test_get_cache_stats_error(self):
