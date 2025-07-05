@@ -12,7 +12,7 @@ client = TestClient(app)
 class TestCacheIntegration:
     """Integration tests for complete cache flow"""
 
-    @patch('redis_stream_client.redis_client')
+    @patch('cache_service.redis_client')
     @patch('podcast_audio_resolver_service.get_audio.get_episode_audio_from_apple')
     @patch('podcast_audio_resolver_service.audio_upload_producer.emit_audio_uploaded')
     def test_complete_cache_flow(self, mock_emit, mock_get_audio, mock_redis):
@@ -104,7 +104,7 @@ class TestCacheIntegration:
         # Verify cache was checked again
         assert mock_redis.get.call_count == 2
 
-    @patch('redis_stream_client.redis_client')
+    @patch('cache_service.redis_client')
     def test_cache_different_summary_types(self, mock_redis):
         """Test that different summary types are cached separately"""
         
@@ -129,7 +129,7 @@ class TestCacheIntegration:
         assert calls[0][0][0] == "episode:apple:123456:bs"
         assert calls[1][0][0] == "episode:apple:123456:ts"
 
-    @patch('redis_stream_client.redis_client')
+    @patch('cache_service.redis_client')
     def test_cache_platform_isolation(self, mock_redis):
         """Test that different platforms are cached separately"""
         
@@ -154,11 +154,11 @@ class TestCacheIntegration:
         assert calls[0][0][0] == "episode:apple:123456:ts"
         assert calls[1][0][0] == "episode:spotify:123456:ts"
 
-    @patch('redis_stream_client.redis_client')
+    @patch('cache_service.redis_client')
     @patch('podcast_audio_resolver_service.get_audio.get_episode_audio_from_apple')
     @patch('podcast_audio_resolver_service.audio_upload_producer.emit_audio_uploaded')
-    def test_cache_ttl_verification(self, mock_redis, mock_get_audio, mock_emit):
-        """Test that cache entries are stored with correct TTL"""
+    def test_cache_ttl_verification(self, mock_emit, mock_get_audio, mock_redis):
+        """Test that cache is checked during submit request"""
         
         # Mock cache miss
         mock_redis.get.return_value = None
@@ -175,25 +175,35 @@ class TestCacheIntegration:
             "summary_type": "ts"
         })
         
-        # Verify TTL was set correctly
-        mock_redis.setex.assert_called()
-        call_args = mock_redis.setex.call_args
-        assert call_args[0][1] == CacheService.EPISODE_CACHE_TTL  # TTL value
+        # Verify cache was checked (not set - that happens later in summarization service)
+        mock_redis.get.assert_called_once_with("episode:apple:123456:ts")
+        
+        # Verify the request was successful and processing was triggered
+        assert response.status_code == 200
+        data = response.json()
+        assert data["cached"] is False
+        assert "Download successful" in data["message"]
+        
+        # Verify audio processing was triggered
+        mock_get_audio.assert_called_once()
+        mock_emit.assert_called_once()
 
-    @patch('redis_stream_client.redis_client')
+    @patch('cache_service.redis_client')
     @patch('podcast_audio_resolver_service.get_audio.get_episode_audio_from_apple')
     @patch('podcast_audio_resolver_service.audio_upload_producer.emit_audio_uploaded')
-    def test_cache_data_structure_verification(self, mock_redis, mock_get_audio, mock_emit):
-        """Test that cached data has the correct structure"""
+    def test_cache_data_structure_verification(self, mock_emit, mock_get_audio, mock_redis):
+        """Test that cache hit returns data with correct structure"""
         
-        # Mock cache miss
-        mock_redis.get.return_value = None
-        
-        # Mock successful audio extraction
-        mock_get_audio.return_value = {
-            "file_path": "audio_files/test.mp3",
-            "metadata": {"title": "Test Episode"}
+        # Mock cache hit with properly structured data
+        cached_data = {
+            "summary": "Test summary",
+            "metadata": {"title": "Test Episode"},
+            "summary_type": "ts",
+            "transcript_length": 1000,
+            "cached_at": 1234567890,
+            "cache_ttl": CacheService.EPISODE_CACHE_TTL
         }
+        mock_redis.get.return_value = json.dumps(cached_data)
         
         # Submit request
         response = client.post("/submit", json={
@@ -201,22 +211,24 @@ class TestCacheIntegration:
             "summary_type": "ts"
         })
         
-        # Verify data structure
-        mock_redis.setex.assert_called()
-        call_args = mock_redis.setex.call_args
-        cached_data = json.loads(call_args[0][2])
+        # Verify cache was checked
+        mock_redis.get.assert_called_once_with("episode:apple:123456:ts")
         
-        # Check required fields
-        required_fields = ["cached_at", "cache_ttl"]
-        for field in required_fields:
-            assert field in cached_data
+        # Verify the response has correct structure
+        assert response.status_code == 200
+        data = response.json()
+        assert data["cached"] is True
+        assert "Cached result retrieved" in data["message"]
+        assert data["data"]["summary"] == "Test summary"
+        assert data["data"]["metadata"]["title"] == "Test Episode"
+        assert data["data"]["cached_at"] == 1234567890
+        assert data["data"]["cache_ttl"] == CacheService.EPISODE_CACHE_TTL
         
-        # Check data types
-        assert isinstance(cached_data["cached_at"], (int, float))
-        assert isinstance(cached_data["cache_ttl"], int)
-        assert cached_data["cache_ttl"] == CacheService.EPISODE_CACHE_TTL
+        # Verify no audio processing was triggered for cache hit
+        mock_get_audio.assert_not_called()
+        mock_emit.assert_not_called()
 
-    @patch('redis_stream_client.redis_client')
+    @patch('cache_service.redis_client')
     def test_cache_error_handling(self, mock_redis):
         """Test that cache errors don't break the application"""
         
@@ -232,11 +244,11 @@ class TestCacheIntegration:
         # Should handle error gracefully and proceed with processing
         assert response.status_code == 200
 
-    @patch('redis_stream_client.redis_client')
+    @patch('cache_service.redis_client')
     def test_cache_stats_integration(self, mock_redis):
         """Test cache statistics integration"""
         
-        # Mock cache keys for both episode and transcript caches
+        # Mock cache keys for episode, transcript, and file hash caches
         episode_keys = [
             "episode:apple:123:ts",
             "episode:spotify:456:bs",
@@ -246,12 +258,18 @@ class TestCacheIntegration:
             "transcript:abc123",
             "transcript:def456"
         ]
+        file_hash_keys = [
+            "transcript:file:hash1",
+            "transcript:file:hash2"
+        ]
         
         def mock_keys(pattern):
             if pattern == "episode:*":
                 return episode_keys
             elif pattern == "transcript:*":
-                return transcript_keys
+                return transcript_keys + file_hash_keys
+            elif pattern == "transcript:file:*":
+                return file_hash_keys
             return []
         
         mock_redis.keys.side_effect = mock_keys
@@ -262,10 +280,11 @@ class TestCacheIntegration:
         assert response.status_code == 200
         data = response.json()
         assert data["episode_cache_count"] == 3
-        assert data["transcript_cache_count"] == 2
-        assert data["total_cached_items"] == 5
+        assert data["transcript_cache_count"] == 4  # transcript_keys + file_hash_keys
+        assert data["file_hash_cache_count"] == 2
+        assert data["total_cached_items"] == 7  # episode_keys + transcript_keys + file_hash_keys
 
-    @patch('redis_stream_client.redis_client')
+    @patch('cache_service.redis_client')
     def test_cache_invalidation_integration(self, mock_redis):
         """Test cache invalidation integration"""
         
@@ -282,7 +301,7 @@ class TestCacheIntegration:
         # Verify correct key was deleted
         mock_redis.delete.assert_called_once_with("episode:apple:123456:ts")
 
-    @patch('redis_stream_client.redis_client')
+    @patch('cache_service.redis_client')
     def test_cache_clear_admin_integration(self, mock_redis):
         """Test admin cache clear integration"""
         
@@ -301,7 +320,7 @@ class TestCacheIntegration:
         mock_redis.delete.return_value = 1
         
         # Clear cache with admin key
-        response = client.delete("/cache/clear?admin_key=default-admin-key")
+        response = client.delete("/cache/clear?admin_key=cache_5f1e9b83c4b44d2db91e3e5b42a6f187")
         
         assert response.status_code == 200
         data = response.json()
@@ -352,7 +371,7 @@ class TestCacheIntegration:
         assert id3 == id4
         assert id3 == "abc123"
 
-    @patch('redis_stream_client.redis_client')
+    @patch('cache_service.redis_client')
     def test_cache_performance_verification(self, mock_redis):
         """Test that cache operations are fast"""
         
