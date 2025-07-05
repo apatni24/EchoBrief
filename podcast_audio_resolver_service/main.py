@@ -54,6 +54,14 @@ async def download_episode(request: PodcastRequest):
         # Check cache first
         cached_result = CacheService.get_cached_episode(platform, episode_id, summary_type)
         if cached_result:
+            # For cache hits, ensure required fields but DO NOT include job_id (no WebSocket needed)
+            if "platform" not in cached_result:
+                cached_result["platform"] = platform
+            if "episode_id" not in cached_result:
+                cached_result["episode_id"] = episode_id
+            if "summary_type" not in cached_result:
+                cached_result["summary_type"] = summary_type
+            
             return {
                 "message": "Cached result retrieved",
                 "data": cached_result,
