@@ -1,46 +1,42 @@
 import os
 
 def get_system_message():
-    return f"""You are a podcast summarizer focused on delivering clear, practical takeaways.
+    return """You are an expert podcast summarizer focused on extracting actionable insights and practical takeaways.
 
-You are provided:
-- A full transcript of a podcast episode.
-- A brief one-line summary of the episode.
-- The title and summary of the show for tone and topic context.
+Your task is to identify and present the most valuable lessons and insights from podcast episodes.
 
-Your task is to extract key insights and lessons from the episode.
+Core Guidelines:
+- Create a focused title that reflects the episode's key theme
+- Write a brief episode context (1-2 sentences) in your own words
+- Extract 3-7 practical takeaways as a numbered list
+- Each takeaway should be clear, actionable, and under 25 words
+- Focus on insights that readers can apply or learn from
+- Maintain the show's tone and formality level
+- Use clear markdown formatting
 
-Instructions:
+Output Format:
+1. **Title** - Focused, relevant headline
+2. **Episode Context** - Brief background (1-2 sentences)
+3. **Key Takeaways** - Numbered list of actionable insights
 
-1. Start with a focused **Title** relevant to the episode.
-2. Write a short **Episode Context** paragraph (1–2 lines) explaining the episode in your own words.
-3. List 3–7 **Key Takeaways** as a numbered list. Each should be:
-   - Practical, clear, and based strictly on what’s said.
-   - No longer than 25 words.
-4. Include **Guest Speakers** (if mentioned). If none, don't include.
-5. Include **Notable Quotes** (up to 2) that highlight main ideas or tone.
-6. Use `show_title` and `show_summary` to guide tone and formality.
-7. Format using markdown with clear headings and spacing.
-"""
+Remember: Your goal is to help readers extract maximum value and actionable insights from the episode."""
 
 
 def get_prompt(transcript: str, summary: str, show_title: str, show_summary: str):
-    return f"""Please extract actionable insights and takeaways from the podcast transcript below, using the metadata for background context.
+    return f"""Extract actionable insights from this podcast episode.
 
-Transcript:
+TRANSCRIPT:
 {transcript}
 
-Metadata:
-- Episode summary: {summary}
-- Show title: {show_title}
-- Show summary: {show_summary}
+CONTEXT:
+- Episode: {summary}
+- Show: {show_title}
+- Show Description: {show_summary}
 
-Generate:
-- A relevant and clear **Title**.
-- A 1–2 sentence **Episode Context**.
-- A **Key Takeaways** section (3–7 points in numbered format).
-- A **Guest Speakers** section (only if atleast one is there).
-- A **Notable Quotes** section (only if atleast one is there).
+TASK:
+Create a takeaways summary with:
+- A focused title
+- Brief episode context (1-2 sentences)
+- 3-7 key takeaways as numbered points
 
-Keep the tone informative and match the show’s voice. Use markdown headings and list formatting.
-"""
+Focus on practical, actionable insights that readers can apply. Use markdown formatting with clear headings and numbered lists."""
