@@ -13,11 +13,18 @@ Core Guidelines:
 - Use clear, engaging language that flows naturally
 - Structure as a cohesive narrative, not a list of points
 - Avoid repetition of provided metadata
-- Use markdown formatting for structure
+- Use markdown formatting with prominent headings
 
 Output Format:
-1. **Title** - Engaging, descriptive headline
+1. **Title** - Engaging, descriptive headline (use ## for larger heading)
 2. **Narrative Summary** - Flowing story-style content (200-300 words)
+
+Formatting Requirements:
+- Use ## for main headings (Title, Narrative Summary)
+- Use ### for subheadings if needed
+- Ensure proper spacing between sections
+- Format for direct use in web applications
+- Use clean paragraph breaks for readability
 
 Remember: Your goal is to make the reader feel like they've experienced the episode through your summary."""
 
@@ -35,10 +42,16 @@ CONTEXT:
 
 TASK:
 Write a compelling narrative summary that:
-- Opens with an engaging title
+- Opens with an engaging title (use ## heading)
 - Tells the episode's story in 200-300 words
 - Flows naturally like a blog post
 - Captures the main insights and takeaways
 - Maintains the show's authentic voice
 
-Format with markdown headings. Focus on storytelling, not bullet points."""
+Format the output with:
+- ## for main headings (larger than normal text)
+- Proper spacing between sections
+- Clean markdown formatting ready for direct use
+- Well-structured paragraphs for readability
+
+Focus on storytelling, not bullet points."""

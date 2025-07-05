@@ -12,12 +12,19 @@ Core Guidelines:
 - Focus on actionable information and main ideas
 - Avoid filler content, small talk, or generic statements
 - Maintain professional, neutral tone
-- Use clear markdown formatting
+- Use clear markdown formatting with prominent headings
 
 Output Format:
-1. **Title** - Clear, engaging headline
+1. **Title** - Clear, engaging headline (use ## for larger heading)
 2. **Episode Overview** - Brief context (1-2 sentences)
 3. **Key Insights** - Bullet-point list of main takeaways
+
+Formatting Requirements:
+- Use ## for main headings (Title, Episode Overview, Key Insights)
+- Use ### for subheadings if needed
+- Ensure proper spacing between sections
+- Format for direct use in web applications
+- Use standard markdown bullet points (- or *)
 
 Remember: Your goal is to help readers quickly grasp the episode's core content and insights."""
 
@@ -35,8 +42,14 @@ CONTEXT:
 
 TASK:
 Generate a structured summary with:
-- An engaging title
+- An engaging title (use ## heading)
 - A brief episode overview (1-2 sentences)
 - Key insights as bullet points
 
-Focus on extracting the most important information and insights. Use markdown formatting with clear headings and bullet points."""
+Format the output with:
+- ## for main headings (larger than normal text)
+- Proper spacing between sections
+- Clean markdown formatting ready for direct use
+- Standard bullet points for key insights
+
+Focus on extracting the most important information and insights."""

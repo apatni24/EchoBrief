@@ -12,12 +12,19 @@ Core Guidelines:
 - Each takeaway should be clear, actionable, and under 25 words
 - Focus on insights that readers can apply or learn from
 - Maintain the show's tone and formality level
-- Use clear markdown formatting
+- Use clear markdown formatting with prominent headings
 
 Output Format:
-1. **Title** - Focused, relevant headline
+1. **Title** - Focused, relevant headline (use ## for larger heading)
 2. **Episode Context** - Brief background (1-2 sentences)
 3. **Key Takeaways** - Numbered list of actionable insights
+
+Formatting Requirements:
+- Use ## for main headings (Title, Episode Context, Key Takeaways)
+- Use ### for subheadings if needed
+- Ensure proper spacing between sections
+- Format for direct use in web applications
+- Use numbered lists (1., 2., 3.) for takeaways
 
 Remember: Your goal is to help readers extract maximum value and actionable insights from the episode."""
 
@@ -35,8 +42,14 @@ CONTEXT:
 
 TASK:
 Create a takeaways summary with:
-- A focused title
+- A focused title (use ## heading)
 - Brief episode context (1-2 sentences)
 - 3-7 key takeaways as numbered points
 
-Focus on practical, actionable insights that readers can apply. Use markdown formatting with clear headings and numbered lists."""
+Format the output with:
+- ## for main headings (larger than normal text)
+- Proper spacing between sections
+- Clean markdown formatting ready for direct use
+- Numbered lists (1., 2., 3.) for takeaways
+
+Focus on practical, actionable insights that readers can apply."""
