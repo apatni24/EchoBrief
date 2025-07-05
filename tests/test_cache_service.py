@@ -179,11 +179,12 @@ class TestCacheService:
         expected_stats = {
             "episode_cache_count": 3,
             "transcript_cache_count": 2,
+            "file_hash_cache_count": 0,
             "total_cached_items": 5
         }
         assert stats == expected_stats
-        # Verify both patterns were checked
-        assert mock_redis.keys.call_count == 2
+        # Verify all three patterns were checked
+        assert mock_redis.keys.call_count == 3
 
     @patch('cache_service.redis_client')
     def test_get_cache_stats_error(self, mock_redis):

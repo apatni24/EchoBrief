@@ -1,6 +1,9 @@
 from redis_stream_client import redis_client, AUDIO_UPLOADED_STREAM
 from transcription_service import assemblyai_transcriber, transcription_complete_producer
+from cache_service import CacheService
 import asyncio, json, time
+import hashlib
+import os
 
 
 temp_msg = """[Speaker A] You're listening to TED Talks Daily where we bring you new ideas to spark your curiosity every day. I'm your host, Elise Hume. People living across the South Pacific in island nations like Polynesia and Micronesia make up less than 1% of global greenhouse gas emissions and yet they are among the most vulnerable to the threat of climate change. But climate justice advocate Fenton Lutana Tabua doesn't want to feed into the narrative that they are only victims of the climate crisis waiting to be saved. In his 2024 talk, Fenton, a Fiji native himself shares the importance of using community led storytelling to break stereotypes of victimhood.
@@ -14,15 +17,45 @@ temp_msg = """[Speaker A] You're listening to TED Talks Daily where we bring you
 
 async def _handle_message(parsed_data):
     start_time = time.time()
-    # delay 5s without blocking the main loop
-    # await asyncio.sleep(1)
+    
+    # Generate a unique identifier for the audio file
+    file_path = parsed_data['file_path']
+    if not os.path.exists(file_path):
+        print(f"❌ Audio file not found: {file_path}")
+        return
+    
+    # Create a hash of the file for cache key
+    with open(file_path, 'rb') as f:
+        file_hash = hashlib.md5(f.read()).hexdigest()
+    
+    # Check transcript cache first
+    cached_transcript = CacheService.get_cached_transcript_by_hash(file_hash)
+    if cached_transcript:
+        print(f"🎯 Found cached transcript for {file_path}")
+        message_txt = cached_transcript["transcript"]
+        end_time = time.time()
+        total_time = end_time - start_time
+        print(f"Retrieved cached transcript in {total_time}s")
+    else:
+        # No cached transcript, perform transcription
+        print(f"🔄 Transcribing {file_path}...")
+        message_txt = await asyncio.to_thread(assemblyai_transcriber.transcribe_audio, file_path)
+        end_time = time.time()
+        total_time = end_time - start_time
+        print(f"Transcribed and diarized data in {total_time}")
 
-    # message_txt = temp_msg
-
-    message_txt = await asyncio.to_thread(assemblyai_transcriber.transcribe_audio,parsed_data['file_path'])
-    end_time = time.time()
-    total_time = end_time-start_time
-    print(f"Transcribed and diarized data in {total_time}")
+        # Cache the transcript for future use
+        transcript_data = {
+            "transcript": message_txt,
+            "metadata": parsed_data.get("metadata", {}),
+            "transcript_length": len(message_txt),
+            "processing_time": total_time,
+            "file_path": file_path,
+            "file_hash": file_hash,
+            "summaries": {}
+        }
+        CacheService.set_cached_transcript_by_hash(file_hash, transcript_data)
+        print(f"💾 Cached transcript for {file_path}")
 
     # now process & emit
     parsed_data["transcript"] = message_txt

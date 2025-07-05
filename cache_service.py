@@ -111,10 +111,12 @@ class CacheService:
             # Count episode cache keys
             episode_keys = len(redis_client.keys(f"{CacheService.EPISODE_CACHE_PREFIX}:*"))
             transcript_keys = len(redis_client.keys(f"{CacheService.TRANSCRIPT_CACHE_PREFIX}:*"))
+            file_hash_keys = len(redis_client.keys(f"{CacheService.TRANSCRIPT_CACHE_PREFIX}:file:*"))
             
             return {
                 "episode_cache_count": episode_keys,
                 "transcript_cache_count": transcript_keys,
+                "file_hash_cache_count": file_hash_keys,
                 "total_cached_items": episode_keys + transcript_keys
             }
             
@@ -131,6 +133,55 @@ class CacheService:
     def _generate_transcript_hash(transcript: str) -> str:
         """Generate hash for transcript content"""
         return hashlib.sha256(transcript.encode('utf-8')).hexdigest()
+    
+    @staticmethod
+    def _generate_file_hash_key(file_hash: str) -> str:
+        """Generate cache key for file hash-based transcript caching"""
+        return f"{CacheService.TRANSCRIPT_CACHE_PREFIX}:file:{file_hash}"
+    
+    @staticmethod
+    def get_cached_transcript_by_hash(file_hash: str) -> Optional[Dict[str, Any]]:
+        """Get cached transcript data by file hash"""
+        try:
+            key = CacheService._generate_file_hash_key(file_hash)
+            cached_data = redis_client.get(key)
+            
+            if cached_data:
+                data = json.loads(cached_data)
+                print(f"🎯 File Hash Cache HIT: Found cached transcript for file hash {file_hash[:8]}...")
+                return data
+            
+            print(f"❌ File Hash Cache MISS: No cached transcript for file hash {file_hash[:8]}...")
+            return None
+            
+        except Exception as e:
+            print(f"⚠️ File hash cache error: {e}")
+            return None
+    
+    @staticmethod
+    def set_cached_transcript_by_hash(file_hash: str, data: Dict[str, Any]) -> bool:
+        """Cache transcript data by file hash"""
+        try:
+            key = CacheService._generate_file_hash_key(file_hash)
+            cache_data = {
+                **data,
+                "cached_at": time.time(),
+                "cache_ttl": CacheService.TRANSCRIPT_CACHE_TTL,
+                "file_hash": file_hash
+            }
+            
+            redis_client.setex(
+                key, 
+                CacheService.TRANSCRIPT_CACHE_TTL, 
+                json.dumps(cache_data)
+            )
+            
+            print(f"💾 Cached transcript by file hash {file_hash[:8]}...")
+            return True
+            
+        except Exception as e:
+            print(f"⚠️ File hash cache set error: {e}")
+            return False
     
     @staticmethod
     def get_cached_transcript(transcript: str) -> Optional[Dict[str, Any]]:
