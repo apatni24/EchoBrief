@@ -27,15 +27,36 @@ def consume_transcription_completed(loop):
                     parsed = json.loads(raw)
 
                     # Check transcript-level cache first
-                    cached_transcript = CacheService.get_cached_transcript(
-                        parsed["transcript"], 
-                        parsed["summary_type"]
-                    )
+                    cached_transcript = CacheService.get_cached_transcript(parsed["transcript"])
                     
                     if cached_transcript:
-                        # Use cached transcript summary
-                        summary = cached_transcript["summary"]
-                        print(f"🎯 Using cached transcript summary for {parsed['summary_type']}")
+                        # Use cached transcript data - generate summary for the requested type
+                        print(f"🎯 Using cached transcript data for {parsed['summary_type']}")
+                        
+                        # Check if we already have this summary type cached
+                        if "summaries" in cached_transcript and parsed["summary_type"] in cached_transcript["summaries"]:
+                            summary = cached_transcript["summaries"][parsed["summary_type"]]
+                            print(f"🎯 Found cached summary for {parsed['summary_type']}")
+                        else:
+                            # Generate new summary for this type
+                            summary = summarize.get_summary(
+                                parsed["summary_type"],
+                                parsed["transcript"],
+                                parsed["metadata"]["summary"],
+                                parsed["metadata"]["show_title"],
+                                parsed["metadata"]["show_summary"],
+                            )
+                            
+                            # Update the cached transcript with the new summary type
+                            if "summaries" not in cached_transcript:
+                                cached_transcript["summaries"] = {}
+                            cached_transcript["summaries"][parsed["summary_type"]] = summary
+                            
+                            # Update the cache with the new summary
+                            CacheService.set_cached_transcript(
+                                parsed["transcript"],
+                                cached_transcript
+                            )
                     else:
                         # Generate new summary
                         summary = summarize.get_summary(
@@ -46,19 +67,20 @@ def consume_transcription_completed(loop):
                             parsed["metadata"]["show_summary"],
                         )
                         
-                        # Cache the transcript result
+                        # Cache the transcript data with the first summary
                         transcript_data = {
-                            "summary": summary,
+                            "transcript": parsed["transcript"],
                             "metadata": parsed["metadata"],
-                            "summary_type": parsed["summary_type"],
                             "transcript_length": len(parsed["transcript"]),
                             "processing_time": parsed.get("processing_time", 0),
-                            "file_path": parsed.get("file_path", "")
+                            "file_path": parsed.get("file_path", ""),
+                            "summaries": {
+                                parsed["summary_type"]: summary
+                            }
                         }
                         
                         CacheService.set_cached_transcript(
                             parsed["transcript"],
-                            parsed["summary_type"],
                             transcript_data
                         )
 

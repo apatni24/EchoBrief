@@ -123,9 +123,9 @@ class CacheService:
             return {"error": str(e)}
     
     @staticmethod
-    def _generate_transcript_key(transcript_hash: str, summary_type: str) -> str:
+    def _generate_transcript_key(transcript_hash: str) -> str:
         """Generate cache key for transcript-level caching"""
-        return f"{CacheService.TRANSCRIPT_CACHE_PREFIX}:{transcript_hash}:{summary_type}"
+        return f"{CacheService.TRANSCRIPT_CACHE_PREFIX}:{transcript_hash}"
     
     @staticmethod
     def _generate_transcript_hash(transcript: str) -> str:
@@ -133,19 +133,19 @@ class CacheService:
         return hashlib.sha256(transcript.encode('utf-8')).hexdigest()
     
     @staticmethod
-    def get_cached_transcript(transcript: str, summary_type: str) -> Optional[Dict[str, Any]]:
-        """Get cached transcript summary"""
+    def get_cached_transcript(transcript: str) -> Optional[Dict[str, Any]]:
+        """Get cached transcript data"""
         try:
             transcript_hash = CacheService._generate_transcript_hash(transcript)
-            key = CacheService._generate_transcript_key(transcript_hash, summary_type)
+            key = CacheService._generate_transcript_key(transcript_hash)
             cached_data = redis_client.get(key)
             
             if cached_data:
                 data = json.loads(cached_data)
-                print(f"🎯 Transcript Cache HIT: Found cached transcript for {summary_type}")
+                print(f"🎯 Transcript Cache HIT: Found cached transcript")
                 return data
             
-            print(f"❌ Transcript Cache MISS: No cached transcript for {summary_type}")
+            print(f"❌ Transcript Cache MISS: No cached transcript")
             return None
             
         except Exception as e:
@@ -153,11 +153,11 @@ class CacheService:
             return None
     
     @staticmethod
-    def set_cached_transcript(transcript: str, summary_type: str, data: Dict[str, Any]) -> bool:
-        """Cache transcript summary"""
+    def set_cached_transcript(transcript: str, data: Dict[str, Any]) -> bool:
+        """Cache transcript data"""
         try:
             transcript_hash = CacheService._generate_transcript_hash(transcript)
-            key = CacheService._generate_transcript_key(transcript_hash, summary_type)
+            key = CacheService._generate_transcript_key(transcript_hash)
             cache_data = {
                 **data,
                 "cached_at": time.time(),
@@ -171,7 +171,7 @@ class CacheService:
                 json.dumps(cache_data)
             )
             
-            print(f"💾 Cached transcript for {summary_type}")
+            print(f"💾 Cached transcript")
             return True
             
         except Exception as e:
@@ -179,14 +179,14 @@ class CacheService:
             return False
     
     @staticmethod
-    def invalidate_specific_transcript(transcript: str, summary_type: str) -> bool:
+    def invalidate_specific_transcript(transcript: str) -> bool:
         """Invalidate a specific transcript cache entry"""
         try:
             transcript_hash = CacheService._generate_transcript_hash(transcript)
-            key = CacheService._generate_transcript_key(transcript_hash, summary_type)
+            key = CacheService._generate_transcript_key(transcript_hash)
             result = redis_client.delete(key)
             if result:
-                print(f"🗑️ Invalidated transcript cache for {summary_type}")
+                print(f"🗑️ Invalidated transcript cache")
             return bool(result)
         except Exception as e:
             print(f"⚠️ Transcript cache invalidation error: {e}")

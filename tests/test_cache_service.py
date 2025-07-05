@@ -280,54 +280,57 @@ class TestCacheService:
     def test_get_cached_transcript_success(self, mock_redis):
         """Test successful transcript cache retrieval"""
         transcript = "This is a test transcript content"
-        summary_type = "ts"
         
         cached_data = {
-            "summary": "Cached summary",
+            "transcript": transcript,
             "metadata": {"title": "Test Episode"},
+            "summaries": {
+                "ts": "Cached summary for ts",
+                "bs": "Cached summary for bs"
+            },
             "cached_at": 1234567890,
             "transcript_hash": "abc123"
         }
         
         mock_redis.get.return_value = json.dumps(cached_data)
         
-        result = CacheService.get_cached_transcript(transcript, summary_type)
+        result = CacheService.get_cached_transcript(transcript)
         
         assert result == cached_data
         # Verify correct key was used
-        expected_key = f"transcript:{CacheService._generate_transcript_hash(transcript)}:{summary_type}"
+        expected_key = f"transcript:{CacheService._generate_transcript_hash(transcript)}"
         mock_redis.get.assert_called_once_with(expected_key)
 
     @patch('cache_service.redis_client')
     def test_get_cached_transcript_miss(self, mock_redis):
         """Test transcript cache miss"""
         transcript = "This is a test transcript content"
-        summary_type = "ts"
         
         mock_redis.get.return_value = None
         
-        result = CacheService.get_cached_transcript(transcript, summary_type)
+        result = CacheService.get_cached_transcript(transcript)
         
         assert result is None
-        expected_key = f"transcript:{CacheService._generate_transcript_hash(transcript)}:{summary_type}"
+        expected_key = f"transcript:{CacheService._generate_transcript_hash(transcript)}"
         mock_redis.get.assert_called_once_with(expected_key)
 
     @patch('cache_service.redis_client')
     def test_set_cached_transcript_success(self, mock_redis):
         """Test successful transcript cache storage"""
         transcript = "This is a test transcript content"
-        summary_type = "ts"
         data = {
-            "summary": "Test summary",
+            "transcript": transcript,
             "metadata": {"title": "Test Episode"},
-            "summary_type": "ts",
+            "summaries": {
+                "ts": "Test summary for ts"
+            },
             "transcript_length": 1000
         }
         
-        result = CacheService.set_cached_transcript(transcript, summary_type, data)
+        result = CacheService.set_cached_transcript(transcript, data)
         
         assert result is True
-        expected_key = f"transcript:{CacheService._generate_transcript_hash(transcript)}:{summary_type}"
+        expected_key = f"transcript:{CacheService._generate_transcript_hash(transcript)}"
         mock_redis.setex.assert_called_once()
         
         # Verify the stored data
@@ -336,8 +339,9 @@ class TestCacheService:
         assert call_args[0][1] == CacheService.TRANSCRIPT_CACHE_TTL
         
         stored_data = json.loads(call_args[0][2])
-        assert stored_data["summary"] == data["summary"]
+        assert stored_data["transcript"] == transcript
         assert stored_data["metadata"] == data["metadata"]
+        assert stored_data["summaries"] == data["summaries"]
         assert stored_data["transcript_hash"] == CacheService._generate_transcript_hash(transcript)
         assert "cached_at" in stored_data
         assert stored_data["cache_ttl"] == CacheService.TRANSCRIPT_CACHE_TTL
@@ -346,12 +350,14 @@ class TestCacheService:
     def test_set_cached_transcript_error(self, mock_redis):
         """Test transcript cache storage with Redis error"""
         transcript = "This is a test transcript content"
-        summary_type = "ts"
-        data = {"summary": "Test summary"}
+        data = {
+            "transcript": transcript,
+            "summaries": {"ts": "Test summary"}
+        }
         
         mock_redis.setex.side_effect = Exception("Redis connection error")
         
-        result = CacheService.set_cached_transcript(transcript, summary_type, data)
+        result = CacheService.set_cached_transcript(transcript, data)
         
         assert result is False
 
@@ -359,25 +365,23 @@ class TestCacheService:
     def test_invalidate_specific_transcript_success(self, mock_redis):
         """Test successful transcript cache invalidation"""
         transcript = "This is a test transcript content"
-        summary_type = "ts"
         
         mock_redis.delete.return_value = 1
         
-        result = CacheService.invalidate_specific_transcript(transcript, summary_type)
+        result = CacheService.invalidate_specific_transcript(transcript)
         
         assert result is True
-        expected_key = f"transcript:{CacheService._generate_transcript_hash(transcript)}:{summary_type}"
+        expected_key = f"transcript:{CacheService._generate_transcript_hash(transcript)}"
         mock_redis.delete.assert_called_once_with(expected_key)
 
     @patch('cache_service.redis_client')
     def test_invalidate_specific_transcript_not_found(self, mock_redis):
         """Test transcript cache invalidation when key doesn't exist"""
         transcript = "This is a test transcript content"
-        summary_type = "ts"
         
         mock_redis.delete.return_value = 0
         
-        result = CacheService.invalidate_specific_transcript(transcript, summary_type)
+        result = CacheService.invalidate_specific_transcript(transcript)
         
         assert result is False
 
@@ -398,11 +402,9 @@ class TestCacheService:
     def test_transcript_key_generation(self):
         """Test transcript cache key generation"""
         transcript = "Test transcript"
-        summary_type = "ts"
         
         transcript_hash = CacheService._generate_transcript_hash(transcript)
-        key = CacheService._generate_transcript_key(transcript_hash, summary_type)
+        key = CacheService._generate_transcript_key(transcript_hash)
         
-        assert key == f"transcript:{transcript_hash}:{summary_type}"
-        assert key.startswith("transcript:")
-        assert key.endswith(":ts") 
+        assert key == f"transcript:{transcript_hash}"
+        assert key.startswith("transcript:") 

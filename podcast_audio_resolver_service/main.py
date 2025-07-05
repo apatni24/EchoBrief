@@ -106,9 +106,6 @@ async def download_episode(request: PodcastRequest):
         data["platform"] = platform
         data["episode_id"] = episode_id
 
-        # TEMP PATCH: Set cache here for integration test compatibility (remove for true async flow)
-        CacheService.set_cached_episode(platform, episode_id, summary_type, data)
-
         if data.get("file_path"):
             audio_upload_producer.emit_audio_uploaded(data)
         else:

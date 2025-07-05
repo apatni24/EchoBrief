@@ -243,8 +243,8 @@ class TestCacheIntegration:
             "episode:apple:789:ns"
         ]
         transcript_keys = [
-            "transcript:abc123:ts",
-            "transcript:def456:bs"
+            "transcript:abc123",
+            "transcript:def456"
         ]
         
         def mock_keys(pattern):
@@ -288,7 +288,7 @@ class TestCacheIntegration:
         
         # Mock cache keys for both episode and transcript caches
         episode_keys = ["episode:apple:123:ts", "episode:spotify:456:bs"]
-        transcript_keys = ["transcript:abc123:ts", "transcript:def456:bs"]
+        transcript_keys = ["transcript:abc123", "transcript:def456"]
         
         def mock_keys(pattern):
             if pattern == "episode:*":
@@ -370,27 +370,34 @@ class TestCacheIntegration:
         assert (end_time - start_time) < 0.01
         assert result is not None
 
-    @patch('redis_stream_client.redis_client')
+    @patch('cache_service.redis_client')
     def test_transcript_cache_integration(self, mock_redis):
         """Test transcript cache integration"""
         
         # Mock transcript cache miss then hit
-        mock_redis.get.side_effect = [None, json.dumps({"summary": "Cached transcript summary"})]
+        cached_data = {
+            "transcript": "This is a test transcript content",
+            "summaries": {
+                "ts": "Cached transcript summary for ts",
+                "bs": "Cached transcript summary for bs"
+            }
+        }
+        mock_redis.get.side_effect = [None, json.dumps(cached_data)]
         
         # Test transcript cache miss
         transcript = "This is a test transcript content"
-        summary_type = "ts"
         
-        result1 = CacheService.get_cached_transcript(transcript, summary_type)
+        result1 = CacheService.get_cached_transcript(transcript)
         assert result1 is None
         
         # Test transcript cache hit
-        result2 = CacheService.get_cached_transcript(transcript, summary_type)
+        result2 = CacheService.get_cached_transcript(transcript)
         assert result2 is not None
-        assert result2["summary"] == "Cached transcript summary"
+        assert result2["summaries"]["ts"] == "Cached transcript summary for ts"
+        assert result2["summaries"]["bs"] == "Cached transcript summary for bs"
         
         # Verify correct keys were used
-        expected_key = f"transcript:{CacheService._generate_transcript_hash(transcript)}:{summary_type}"
+        expected_key = f"transcript:{CacheService._generate_transcript_hash(transcript)}"
         assert mock_redis.get.call_count == 2
         assert mock_redis.get.call_args_list[0][0][0] == expected_key
         assert mock_redis.get.call_args_list[1][0][0] == expected_key 
