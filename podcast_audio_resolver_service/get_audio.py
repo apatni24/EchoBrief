@@ -47,7 +47,9 @@ def get_episode_audio_from_spotify(episode_url):
 
 def get_episode_audio_from_apple(apple_episode_url):
     # Extract Episode ID
-    episode_id_match = re.search(r'\?i=(\d+)', apple_episode_url)
+    episode_id_match = re.search(r'[?&]i=(\d+)', apple_episode_url)
+    if not episode_id_match:
+        episode_id_match = re.search(r'[?&]id=(\d+)', apple_episode_url)
     if not episode_id_match:
         print("Invalid Apple Podcast Episode URL format.")
         return

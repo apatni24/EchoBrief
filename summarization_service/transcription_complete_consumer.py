@@ -2,6 +2,7 @@
 from redis_stream_client import redis_client, TRANSCRIPTION_COMPLETE_STREAM
 from summarization_service import summarize
 from summarization_service.ws_manager import manager
+from cache_service import CacheService
 import json, asyncio
 
 def consume_transcription_completed(loop):
@@ -33,6 +34,24 @@ def consume_transcription_completed(loop):
                         parsed["metadata"]["show_title"],
                         parsed["metadata"]["show_summary"],
                     )
+
+                    # Cache the episode result
+                    if "platform" in parsed and "episode_id" in parsed:
+                        episode_data = {
+                            "summary": summary,
+                            "metadata": parsed["metadata"],
+                            "summary_type": parsed["summary_type"],
+                            "transcript_length": len(parsed["transcript"]),
+                            "processing_time": parsed.get("processing_time", 0),
+                            "file_path": parsed.get("file_path", "")
+                        }
+                        
+                        CacheService.set_cached_episode(
+                            parsed["platform"],
+                            parsed["episode_id"],
+                            parsed["summary_type"],
+                            episode_data
+                        )
 
                     payload = {
                         "job_id": parsed["job_id"],
