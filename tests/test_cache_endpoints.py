@@ -60,7 +60,7 @@ class TestCacheEndpoints:
         mock_clear.return_value = True
         
         # Use the actual admin key from the environment
-        response = client.delete("/cache/clear?admin_key=cache_5f1e9b83c4b44d2db91e3e5b42a6f187")
+        response = client.delete("/cache/clear?admin_key=default-admin-key")
         
         assert response.status_code == 200
         data = response.json()
@@ -73,7 +73,7 @@ class TestCacheEndpoints:
         """Test cache clear when service fails"""
         mock_clear.return_value = False
         
-        response = client.delete("/cache/clear?admin_key=cache_5f1e9b83c4b44d2db91e3e5b42a6f187")
+        response = client.delete("/cache/clear?admin_key=default-admin-key")
         
         assert response.status_code == 200
         data = response.json()

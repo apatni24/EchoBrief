@@ -1,6 +1,7 @@
 import os
 import requests
 import feedparser
+import hashlib
 
 def get_episode_audio_file_with_episode_title(episode_entry, episode_title):
     audio_url = episode_entry.enclosures[0]['href']
@@ -18,16 +19,22 @@ def get_episode_audio_file_with_episode_title(episode_entry, episode_title):
     os.makedirs(folder, exist_ok=True)
     file_path = os.path.join(folder, filename)
     
-    # Download the audio file
+    # Download the audio file and compute hash simultaneously
     print(f"Downloading to {file_path} ...")
+    hash_md5 = hashlib.md5()
+    
     with requests.get(audio_url, stream=True) as r:
         r.raise_for_status()
         with open(file_path, 'wb') as f:
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
+                hash_md5.update(chunk)  # Compute hash during download
     
+    file_hash = hash_md5.hexdigest()
     print(f"Download complete: {file_path}")
-    return file_path
+    print(f"File hash: {file_hash}")
+    
+    return file_path, file_hash
 
 def download_episode_audio_with_episode_id(rss_url, apple_episode_id):
     """
@@ -54,19 +61,25 @@ def download_episode_audio_with_episode_id(rss_url, apple_episode_id):
             os.makedirs(folder, exist_ok=True)
             file_path = os.path.join(folder, filename)
 
-            # Download audio file
+            # Download audio file and compute hash simultaneously
             print(f"Downloading audio to {file_path} ...")
+            hash_md5 = hashlib.md5()
+            
             with requests.get(audio_url, stream=True) as r:
                 r.raise_for_status()
                 with open(file_path, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
+                        hash_md5.update(chunk)  # Compute hash during download
 
+            file_hash = hash_md5.hexdigest()
             print(f"Download complete: {file_path}")
-            return file_path
+            print(f"File hash: {file_hash}")
+            
+            return file_path, file_hash
 
     print("Episode ID not found in RSS feed.")
-    return None
+    return None, None
 
 def get_show_title(feed):
     return feed.feed.title
@@ -115,11 +128,12 @@ def download_audio_and_get_metadata(rss_url, episode_title):
         summary = episode_entry.summary
         show_title = get_show_title(feed)
         show_summary = get_show_summary(feed)
-        file_path = get_episode_audio_file_with_episode_title(episode_entry, episode_title)
+        file_path, file_hash = get_episode_audio_file_with_episode_title(episode_entry, episode_title)
         image_url = episode_entry.image.href
         
         return {
             "file_path": file_path,
+            "file_hash": file_hash,
             "metadata": {
                 "summary": summary,
                 "show_title": show_title,

@@ -18,15 +18,22 @@ temp_msg = """[Speaker A] You're listening to TED Talks Daily where we bring you
 async def _handle_message(parsed_data):
     start_time = time.time()
     
-    # Generate a unique identifier for the audio file
+    # Use pre-computed file hash if available, otherwise compute it
     file_path = parsed_data['file_path']
     if not os.path.exists(file_path):
         print(f"❌ Audio file not found: {file_path}")
         return
     
-    # Create a hash of the file for cache key
-    with open(file_path, 'rb') as f:
-        file_hash = hashlib.md5(f.read()).hexdigest()
+    # Check if file_hash was pre-computed during download
+    if 'file_hash' in parsed_data and parsed_data['file_hash']:
+        file_hash = parsed_data['file_hash']
+        print(f"🎯 Using pre-computed file hash: {file_hash[:8]}...")
+    else:
+        # Fallback: compute hash by reading file (for backward compatibility)
+        print(f"🔄 Computing file hash for {file_path}...")
+        with open(file_path, 'rb') as f:
+            file_hash = hashlib.md5(f.read()).hexdigest()
+        print(f"📝 Computed file hash: {file_hash[:8]}...")
     
     # Check transcript cache first
     cached_transcript = CacheService.get_cached_transcript_by_hash(file_hash)
