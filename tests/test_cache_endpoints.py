@@ -237,7 +237,7 @@ class TestCacheEndpoints:
         
         # Test Apple Podcasts
         with patch('podcast_audio_resolver_service.get_audio.get_episode_audio_from_apple') as mock_apple:
-            mock_apple.return_value = {"file_path": "test.mp3", "metadata": {}}
+            mock_apple.return_value = {"file_path": "test.mp3", "metadata": {"title": "Test Episode"}}
             
             response = client.post("/submit", json={
                 "url": "https://podcasts.apple.com/us/podcast/episode?id=123456",
@@ -251,7 +251,7 @@ class TestCacheEndpoints:
 
         # Test Spotify
         with patch('podcast_audio_resolver_service.get_audio.get_episode_audio_from_spotify') as mock_spotify:
-            mock_spotify.return_value = {"file_path": "test.mp3", "metadata": {}}
+            mock_spotify.return_value = {"file_path": "test.mp3", "metadata": {"title": "Test Episode"}}
             
             response = client.post("/submit", json={
                 "url": "https://open.spotify.com/episode/abc123",
