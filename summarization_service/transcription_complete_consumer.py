@@ -29,8 +29,10 @@ def consume_transcription_completed(loop):
                     try:
                         # Extract episode title from metadata
                         episode_title = None
+                        duration = None
                         if "metadata" in parsed and parsed["metadata"]:
                             episode_title = parsed["metadata"].get("episode_title")
+                            duration = parsed["metadata"].get("duration")
                         
                         # Check transcript-level cache first
                         cached_transcript = CacheService.get_cached_transcript(parsed["transcript"])
@@ -49,7 +51,8 @@ def consume_transcription_completed(loop):
                                     parsed["metadata"]["summary"],
                                     parsed["metadata"]["show_title"],
                                     parsed["metadata"]["show_summary"],
-                                    episode_title
+                                    episode_title,
+                                    duration
                                 )
                                 # Update the cached transcript with the new summary type
                                 if "summaries" not in cached_transcript:
@@ -68,7 +71,8 @@ def consume_transcription_completed(loop):
                                 parsed["metadata"]["summary"],
                                 parsed["metadata"]["show_title"],
                                 parsed["metadata"]["show_summary"],
-                                episode_title
+                                episode_title,
+                                duration
                             )
                             # Cache the transcript data with the first summary
                             transcript_data = {

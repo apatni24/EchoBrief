@@ -17,10 +17,12 @@ load_dotenv()
 ENV = os.getenv("ENV", "dev")
 # Use ChatGroq as the OpenAI-compatible backend
 CHATGROQ_API_KEY = os.getenv("CHATGROQ_API_KEY")
+CHATGROQ_API_KEY2 = os.getenv("CHATGROQ_API_KEY2")  # Second API key for load distribution
 CHATGROQ_API_URL = os.getenv("CHATGROQ_API_URL", "https://api.chatgroq.com/v1")
 
 # Rate limiting: ensure at least 60 seconds between calls
 _t_last_request_time = 0.0
+_api_key_usage_counter = 0  # Track which API key to use next
 
 def _rate_limit():
     global _t_last_request_time
@@ -31,6 +33,86 @@ def _rate_limit():
         print(f"[Summarizer] Rate limit in effect, sleeping for {wait:.1f}s...")
         time.sleep(wait)
     _t_last_request_time = time.time()
+
+def _get_next_api_key():
+    """Alternate between API keys to distribute load"""
+    global _api_key_usage_counter
+    _api_key_usage_counter += 1
+    
+    # Use CHATGROQ_API_KEY2 if available, otherwise fall back to primary key
+    if CHATGROQ_API_KEY2 and _api_key_usage_counter % 2 == 0:
+        print(f"[Summarizer] Using secondary API key (call #{_api_key_usage_counter})")
+        return CHATGROQ_API_KEY2
+    else:
+        print(f"[Summarizer] Using primary API key (call #{_api_key_usage_counter})")
+        return CHATGROQ_API_KEY
+
+def _create_llm(model_name, temperature=0.2):
+    """Create LLM instance with the next available API key"""
+    api_key = _get_next_api_key()
+    return ChatOpenAI(
+        openai_api_key=api_key,
+        openai_api_base=CHATGROQ_API_URL,
+        temperature=temperature,
+        model_name=model_name
+    )
+
+def safe_llm_run(chain, input_data, max_retries=3, initial_chunk_size=2000):
+    """Safely run LLM chain with automatic retry and chunking for token limit errors"""
+    chunk_size = initial_chunk_size
+    
+    for attempt in range(max_retries):
+        try:
+            return chain.run(input_data)
+        except Exception as e:
+            error_msg = str(e).lower()
+            
+            # Check for token limit or request too large errors
+            if any(keyword in error_msg for keyword in ["request too large", "rate_limit_exceeded", "413", "tokens per minute"]):
+                print(f"[Summarizer] Token limit error on attempt {attempt + 1}: {e}")
+                
+                if attempt < max_retries - 1 and chunk_size > 500:
+                    # Reduce chunk size and retry
+                    chunk_size = chunk_size // 2
+                    print(f"[Summarizer] Retrying with smaller chunk size: {chunk_size}")
+                    
+                    # Re-chunk the transcript if it's in the input data
+                    if "transcript" in input_data:
+                        splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=200)
+                        docs = splitter.create_documents([input_data["transcript"]])
+                        
+                        if len(docs) > 1:
+                            # Process chunks and combine results
+                            results = []
+                            for i, doc in enumerate(docs):
+                                print(f"[Summarizer] Processing chunk {i+1}/{len(docs)}")
+                                chunk_input = input_data.copy()
+                                chunk_input["transcript"] = doc.page_content
+                                results.append(chain.run(chunk_input))
+                            
+                            # Combine results (for validation, we might want to merge differently)
+                            if "validation" in str(chain.prompt).lower():
+                                # For validation, combine all corrections and summaries
+                                combined_result = ""
+                                for result in results:
+                                    if "CORRECTIONS:" in result:
+                                        combined_result += result + "\n"
+                                    elif "VALIDATION:" in result:
+                                        combined_result += result + "\n"
+                                return combined_result
+                            else:
+                                return "\n".join(results)
+                        else:
+                            # Single chunk, just retry with smaller size
+                            continue
+                    else:
+                        # No transcript to chunk, just retry
+                        continue
+                else:
+                    raise RuntimeError(f"Failed to process after {max_retries} attempts. Last error: {e}")
+            else:
+                # Non-token-limit error, re-raise
+                raise
 
 # Step 1: Speaker Role Identification
 speaker_id_prompt = PromptTemplate(
@@ -97,22 +179,16 @@ def get_summary(summary_type: str, transcript: str, episode_summary: str, show_t
     print("[Summarizer] Generating summary with LangChain (ChatGroq backend)...")
     _rate_limit()
 
-    # Initialize LLM
-    llm = ChatOpenAI(
-        openai_api_key=CHATGROQ_API_KEY,
-        openai_api_base=CHATGROQ_API_URL,
-        temperature=0.2,
-        model_name="llama3-70b-8192"  # Use a ChatGroq-supported model
-    )
+    # Step 1: Speaker Role Identification (use cheaper model)
+    print("[Summarizer] Step 1: Identifying speaker roles...")
+    cheap_llm = _create_llm("llama3-8b-8192", temperature=0.2)  # Cheaper model for less critical task
+    speaker_chain = LLMChain(llm=cheap_llm, prompt=speaker_id_prompt, output_key="speaker_roles")
+    speaker_roles = safe_llm_run(speaker_chain, {"transcript": transcript})
 
-    # Step 1: Speaker Role Identification
-    speaker_chain = LLMChain(llm=llm, prompt=speaker_id_prompt, output_key="speaker_roles")
-    speaker_roles = speaker_chain.run({"transcript": transcript})
-
-    # Step 2: Transcript Validation and Correction
-    print("[Summarizer] Validating transcript against metadata...")
-    validation_chain = LLMChain(llm=llm, prompt=transcript_validation_prompt, output_key="validation_result")
-    validation_result = validation_chain.run({
+    # Step 2: Transcript Validation and Correction (use cheaper model)
+    print("[Summarizer] Step 2: Validating transcript against metadata...")
+    validation_chain = LLMChain(llm=cheap_llm, prompt=transcript_validation_prompt, output_key="validation_result")
+    validation_result = safe_llm_run(validation_chain, {
         "transcript": transcript,
         "episode_title": episode_title or "Unknown Episode",
         "show_title": show_title,
@@ -218,13 +294,15 @@ IMPORTANT:
     # For simplicity, concatenate all chunks for now (can use map-reduce/refine for large docs)
     full_text = "\n".join([d.page_content for d in docs])
 
-    # Step 7: Run summary chain with enhanced metadata
+    # Step 7: Run summary chain with enhanced metadata (use best quality model)
+    print("[Summarizer] Step 3: Generating final summary...")
+    main_llm = _create_llm("llama3-70b-8192", temperature=0.2)  # Best quality model for final summary
     summary_chain = LLMChain(
-        llm=llm,
+        llm=main_llm,
         prompt=prompt,
         output_key="summary"
     )
-    summary = summary_chain.run({
+    summary = safe_llm_run(summary_chain, {
         "transcript": full_text,
         "episode_summary": episode_summary,
         "show_title": show_title,
