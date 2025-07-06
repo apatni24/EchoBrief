@@ -19,7 +19,7 @@ EchoBrief was built to solve real-world backend engineering challenges. It showc
 - 🧠 Scalable summarization via LLaMA 3.3 70B LLMs
 - 🐳 Unified Dockerized deployment with internal NGINX routing
 - 🚦 Thoughtful design to handle cold starts and API rate limits
-- 💾 **Multi-layer caching system for optimal performance**
+- 💾 **Three-layer caching system for optimal performance**
 - 🧪 Comprehensive test coverage for reliability
 
 ---
@@ -55,26 +55,46 @@ This design choice avoids multiple Dockerfiles and leverages Render's free-tier 
 
 ---
 
-## 💾 Multi-Layer Caching System
+## 💾 Three-Layer Caching System
 
-EchoBrief implements a sophisticated multi-layer caching system to optimize performance and reduce processing time:
+EchoBrief implements a sophisticated three-layer caching system to optimize performance and reduce processing time:
 
-### Layer 1: Episode-Level Caching (High Impact)
+### Layer 1: Episode-Level Caching (Highest Impact)
 - **Cache Key**: `episode:{platform}:{episode_id}:{summary_type}`
-- **What to Cache**: Complete summaries for specific episodes
+- **What to Cache**: Complete summaries for specific episodes and summary types
 - **Use Case**: Instant responses for previously processed episodes
 - **TTL**: 7 days
+- **Performance**: 0-1 second response time for cache hits
 
-### Layer 2: Transcript-Level Caching (Medium Impact)
-- **Cache Key**: `transcript:{audio_hash}:{summary_type}`
-- **What to Cache**: Summaries for identical transcripts
-- **Use Case**: Cross-platform deduplication (same content, different platforms)
+### Layer 2: Local File Caching (Medium Impact)
+- **Cache Storage**: `audio_files/download_cache.json`
+- **What to Cache**: Audio URL → local file path and file hash mappings
+- **Use Case**: Avoid re-downloading audio files that are already stored locally
+- **Benefits**: Saves bandwidth and download time for repeated requests
+
+### Layer 3: Transcript Caching (High Impact)
+- **Cache Key**: `transcript:file:{file_hash}`
+- **What to Cache**: Transcribed content by file hash
+- **Use Case**: Avoid re-transcribing identical audio files
+- **Benefits**: Saves expensive transcription API calls and processing time
 - **TTL**: 7 days
+
+### Cache Flow Diagram
+```
+User Request → Layer 1 (Episode Cache) → Layer 2 (Local File Cache) → Layer 3 (Transcript Cache) → Processing
+     ↓              ↓                        ↓                        ↓
+  Cache Hit?    Cache Hit?              Cache Hit?              Cache Hit?
+     ↓              ↓                        ↓                        ↓
+  Return        Download Audio?         Use Local File?         Transcribe?
+     ↓              ↓                        ↓                        ↓
+  Summary        Yes/No                  Yes/No                  Yes/No
+```
 
 ### Cache Benefits
 - ⚡ **Cache Hits**: 0-1 second response time
 - 🔄 **Cache Misses**: Normal processing (50-110 seconds)
 - 🌍 **Cross-Platform**: Identical content cached regardless of source
+- 💰 **Cost Savings**: Reduced API calls for transcription and summarization
 - 📊 **Admin Controls**: Cache statistics and management endpoints
 
 ### Cache Management
@@ -88,6 +108,11 @@ DELETE /cache/clear?admin_key={key}
 # Invalidate specific episode
 DELETE /cache/invalidate/{platform}/{episode_id}/{summary_type}
 ```
+
+### Cache Performance Optimization
+- **File Hash Computation**: MD5 hashes are computed during audio download to avoid reading files twice
+- **Backward Compatibility**: System gracefully handles files downloaded before cache implementation
+- **Automatic Cleanup**: Invalid file references are automatically removed from cache
 
 ---
 
@@ -164,7 +189,7 @@ echobrief-backend/
 │       ├── bullet_points_summary.py
 │       ├── narrative_summary.py
 │       └── takeaway_summary.py
-├── cache_service.py                   # Multi-layer caching implementation
+├── cache_service.py                   # Three-layer caching implementation
 ├── redis_stream_client.py             # Redis Streams abstraction
 ├── nginx.conf                         # Reverse proxy config (internal routing)
 ├── Dockerfile                         # Container for all services
@@ -175,8 +200,9 @@ echobrief-backend/
 │   ├── test_cache_integration.py      # Integration tests
 │   └── test_*.py                      # Other service tests
 ├── run_cache_tests.py                 # Cache test runner
+├── test_three_layer_cache.py          # Three-layer caching demonstration
 ├── CACHE_TESTS_README.md              # Cache testing documentation
-└── audio_files/                       # (Optional) Local audio storage
+└── audio_files/                       # Local audio storage with download cache
 ```
 
 ---
@@ -215,6 +241,9 @@ EchoBrief includes comprehensive testing across all layers:
 ```bash
 # Run all cache tests
 python3 run_cache_tests.py
+
+# Run three-layer caching demonstration
+python3 test_three_layer_cache.py
 
 # Run specific test suites
 python3 -m pytest tests/test_cache_service.py -v
@@ -303,14 +332,22 @@ TRANSCRIPT_CACHE_TTL = 7 * 24 * 60 * 60
 # Episode cache keys
 "episode:{platform}:{episode_id}:{summary_type}"
 
-# Transcript cache keys
-"transcript:{sha256_hash}:{summary_type}"
+# Transcript cache keys (by file hash)
+"transcript:file:{file_hash}"
+
+# Local file cache (JSON file)
+audio_url -> {
+    "file_path": "audio_files/episode.mp3",
+    "file_hash": "md5_hash_of_file",
+    "episode_title": "Episode Title"
+}
 ```
 
 ### Cache Statistics
 The system provides real-time cache statistics:
 - Episode cache count
-- Transcript cache count
+- Transcript cache count (by file hash)
+- Local file cache count
 - Total cached items
 - Cache hit/miss ratios
 

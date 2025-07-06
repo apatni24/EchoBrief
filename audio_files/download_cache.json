@@ -1,0 +1,7 @@
+{
+  "https://example.com/test_audio.mp3": {
+    "file_path": "audio_files/Test_Episode.mp3",
+    "file_hash": "simulated_hash_123",
+    "episode_title": "Test Episode"
+  }
+}

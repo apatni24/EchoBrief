@@ -2,12 +2,100 @@ import os
 import requests
 import feedparser
 import hashlib
+import json
+from pathlib import Path
+
+# Cache file to store audio URL to local file mappings
+CACHE_FILE = "audio_files/download_cache.json"
+
+def load_download_cache():
+    """Load the download cache from file"""
+    try:
+        if os.path.exists(CACHE_FILE):
+            with open(CACHE_FILE, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"⚠️ Error loading download cache: {e}")
+    return {}
+
+def save_download_cache(cache):
+    """Save the download cache to file"""
+    try:
+        os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+        with open(CACHE_FILE, 'w') as f:
+            json.dump(cache, f, indent=2)
+    except Exception as e:
+        print(f"⚠️ Error saving download cache: {e}")
+
+def find_existing_audio_file(audio_url, episode_title):
+    """
+    Check if audio file already exists locally.
+    Returns (file_path, file_hash) if found, (None, None) if not found.
+    """
+    # Clean the audio URL for comparison
+    clean_url = audio_url.split('?')[0]
+    
+    # Load existing cache
+    cache = load_download_cache()
+    
+    # Check if URL exists in cache
+    if clean_url in cache:
+        cached_file_path = cache[clean_url]["file_path"]
+        cached_file_hash = cache[clean_url]["file_hash"]
+        
+        # Verify file still exists
+        if os.path.exists(cached_file_path):
+            print(f"🎯 Found existing audio file: {cached_file_path}")
+            print(f"🎯 Using cached file hash: {cached_file_hash[:8]}...")
+            return cached_file_path, cached_file_hash
+        else:
+            print(f"⚠️ Cached file not found, removing from cache: {cached_file_path}")
+            del cache[clean_url]
+            save_download_cache(cache)
+    
+    # Fallback: Check by episode title (for files downloaded before cache was implemented)
+    folder = 'audio_files'
+    if os.path.exists(folder):
+        for filename in os.listdir(folder):
+            if filename.endswith(('.mp3', '.m4a', '.wav')):
+                # Check if episode title is in filename
+                if episode_title.lower().replace(' ', '_').replace('/', '-') in filename.lower():
+                    file_path = os.path.join(folder, filename)
+                    print(f"🎯 Found existing audio file by title: {file_path}")
+                    
+                    # Compute hash for the existing file
+                    print(f"🔄 Computing hash for existing file...")
+                    hash_md5 = hashlib.md5()
+                    with open(file_path, 'rb') as f:
+                        for chunk in iter(lambda: f.read(8192), b""):
+                            hash_md5.update(chunk)
+                    file_hash = hash_md5.hexdigest()
+                    
+                    # Add to cache for future use
+                    cache[clean_url] = {
+                        "file_path": file_path,
+                        "file_hash": file_hash,
+                        "episode_title": episode_title
+                    }
+                    save_download_cache(cache)
+                    
+                    print(f"💾 Added existing file to cache")
+                    return file_path, file_hash
+    
+    print(f"❌ No existing audio file found for: {episode_title}")
+    return None, None
 
 def get_episode_audio_file_with_episode_title(episode_entry, episode_title):
     audio_url = episode_entry.enclosures[0]['href']
     audio_url = audio_url.split('?')[0]
     print(f"Found Audio URL: {audio_url}")
     
+    # Check if file already exists locally
+    existing_file_path, existing_file_hash = find_existing_audio_file(audio_url, episode_title)
+    if existing_file_path and existing_file_hash:
+        return existing_file_path, existing_file_hash
+    
+    # File doesn't exist, proceed with download
     # Detect file extension from URL
     ext = os.path.splitext(audio_url)[1]  # Gets '.m4a' or '.mp3'
     if not ext:
@@ -34,6 +122,16 @@ def get_episode_audio_file_with_episode_title(episode_entry, episode_title):
     print(f"Download complete: {file_path}")
     print(f"File hash: {file_hash}")
     
+    # Add to download cache
+    cache = load_download_cache()
+    cache[audio_url] = {
+        "file_path": file_path,
+        "file_hash": file_hash,
+        "episode_title": episode_title
+    }
+    save_download_cache(cache)
+    print(f"💾 Added to download cache")
+    
     return file_path, file_hash
 
 def download_episode_audio_with_episode_id(rss_url, apple_episode_id):
@@ -48,7 +146,14 @@ def download_episode_audio_with_episode_id(rss_url, apple_episode_id):
 
         if apple_episode_id in guid or apple_episode_id in link:
             audio_url = entry.enclosures[0]['href']
+            episode_title = entry.title
 
+            # Check if file already exists locally
+            existing_file_path, existing_file_hash = find_existing_audio_file(audio_url, episode_title)
+            if existing_file_path and existing_file_hash:
+                return existing_file_path, existing_file_hash
+
+            # File doesn't exist, proceed with download
             # Get file extension from URL
             ext = os.path.splitext(audio_url)[1]
             if not ext:
@@ -75,6 +180,16 @@ def download_episode_audio_with_episode_id(rss_url, apple_episode_id):
             file_hash = hash_md5.hexdigest()
             print(f"Download complete: {file_path}")
             print(f"File hash: {file_hash}")
+            
+            # Add to download cache
+            cache = load_download_cache()
+            cache[audio_url] = {
+                "file_path": file_path,
+                "file_hash": file_hash,
+                "episode_title": episode_title
+            }
+            save_download_cache(cache)
+            print(f"💾 Added to download cache")
             
             return file_path, file_hash
 
