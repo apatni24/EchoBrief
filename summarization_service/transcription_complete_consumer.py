@@ -26,19 +26,36 @@ def consume_transcription_completed(loop):
                         raw = raw.decode()
                     parsed = json.loads(raw)
 
-                    # Check transcript-level cache first
-                    cached_transcript = CacheService.get_cached_transcript(parsed["transcript"])
-                    
-                    if cached_transcript:
-                        # Use cached transcript data - generate summary for the requested type
-                        print(f"🎯 Using cached transcript data for {parsed['summary_type']}")
-                        
-                        # Check if we already have this summary type cached
-                        if "summaries" in cached_transcript and parsed["summary_type"] in cached_transcript["summaries"]:
-                            summary = cached_transcript["summaries"][parsed["summary_type"]]
-                            print(f"🎯 Found cached summary for {parsed['summary_type']}")
+                    try:
+                        # Check transcript-level cache first
+                        cached_transcript = CacheService.get_cached_transcript(parsed["transcript"])
+                        if cached_transcript:
+                            # Use cached transcript data - generate summary for the requested type
+                            print(f"🎯 Using cached transcript data for {parsed['summary_type']}")
+                            # Check if we already have this summary type cached
+                            if "summaries" in cached_transcript and parsed["summary_type"] in cached_transcript["summaries"]:
+                                summary = cached_transcript["summaries"][parsed["summary_type"]]
+                                print(f"🎯 Found cached summary for {parsed['summary_type']}")
+                            else:
+                                # Generate new summary for this type
+                                summary = summarize.get_summary(
+                                    parsed["summary_type"],
+                                    parsed["transcript"],
+                                    parsed["metadata"]["summary"],
+                                    parsed["metadata"]["show_title"],
+                                    parsed["metadata"]["show_summary"],
+                                )
+                                # Update the cached transcript with the new summary type
+                                if "summaries" not in cached_transcript:
+                                    cached_transcript["summaries"] = {}
+                                cached_transcript["summaries"][parsed["summary_type"]] = summary
+                                # Update the cache with the new summary
+                                CacheService.set_cached_transcript(
+                                    parsed["transcript"],
+                                    cached_transcript
+                                )
                         else:
-                            # Generate new summary for this type
+                            # Generate new summary
                             summary = summarize.get_summary(
                                 parsed["summary_type"],
                                 parsed["transcript"],
@@ -46,68 +63,49 @@ def consume_transcription_completed(loop):
                                 parsed["metadata"]["show_title"],
                                 parsed["metadata"]["show_summary"],
                             )
-                            
-                            # Update the cached transcript with the new summary type
-                            if "summaries" not in cached_transcript:
-                                cached_transcript["summaries"] = {}
-                            cached_transcript["summaries"][parsed["summary_type"]] = summary
-                            
-                            # Update the cache with the new summary
+                            # Cache the transcript data with the first summary
+                            transcript_data = {
+                                "transcript": parsed["transcript"],
+                                "metadata": parsed["metadata"],
+                                "transcript_length": len(parsed["transcript"]),
+                                "processing_time": parsed.get("processing_time", 0),
+                                "file_path": parsed.get("file_path", ""),
+                                "summaries": {
+                                    parsed["summary_type"]: summary
+                                }
+                            }
                             CacheService.set_cached_transcript(
                                 parsed["transcript"],
-                                cached_transcript
+                                transcript_data
                             )
-                    else:
-                        # Generate new summary
-                        summary = summarize.get_summary(
-                            parsed["summary_type"],
-                            parsed["transcript"],
-                            parsed["metadata"]["summary"],
-                            parsed["metadata"]["show_title"],
-                            parsed["metadata"]["show_summary"],
-                        )
-                        
-                        # Cache the transcript data with the first summary
-                        transcript_data = {
-                            "transcript": parsed["transcript"],
-                            "metadata": parsed["metadata"],
-                            "transcript_length": len(parsed["transcript"]),
-                            "processing_time": parsed.get("processing_time", 0),
-                            "file_path": parsed.get("file_path", ""),
-                            "summaries": {
-                                parsed["summary_type"]: summary
+                        # Cache the episode result
+                        if "platform" in parsed and "episode_id" in parsed:
+                            episode_data = {
+                                "summary": summary,
+                                "metadata": parsed["metadata"],
+                                "summary_type": parsed["summary_type"],
+                                "transcript_length": len(parsed["transcript"]),
+                                "processing_time": parsed.get("processing_time", 0),
+                                "file_path": parsed.get("file_path", "")
                             }
-                        }
-                        
-                        CacheService.set_cached_transcript(
-                            parsed["transcript"],
-                            transcript_data
-                        )
-
-                    # Cache the episode result
-                    if "platform" in parsed and "episode_id" in parsed:
-                        episode_data = {
+                            CacheService.set_cached_episode(
+                                parsed["platform"],
+                                parsed["episode_id"],
+                                parsed["summary_type"],
+                                episode_data
+                            )
+                        payload = {
+                            "job_id": parsed["job_id"],
+                            "status": "done",
                             "summary": summary,
-                            "metadata": parsed["metadata"],
-                            "summary_type": parsed["summary_type"],
-                            "transcript_length": len(parsed["transcript"]),
-                            "processing_time": parsed.get("processing_time", 0),
-                            "file_path": parsed.get("file_path", "")
                         }
-                        
-                        CacheService.set_cached_episode(
-                            parsed["platform"],
-                            parsed["episode_id"],
-                            parsed["summary_type"],
-                            episode_data
-                        )
-
-                    payload = {
-                        "job_id": parsed["job_id"],
-                        "status": "done",
-                        "summary": summary,
-                    }
-
+                    except Exception as err:
+                        print("[Error] Failed to generate or cache summary:", err)
+                        payload = {
+                            "job_id": parsed.get("job_id", None),
+                            "status": "error",
+                            "error": str(err)
+                        }
                     # schedule the async broadcast on the main loop
                     loop.call_soon_threadsafe(
                         asyncio.create_task,
