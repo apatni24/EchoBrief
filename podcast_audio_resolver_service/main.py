@@ -43,13 +43,20 @@ async def download_episode(request: PodcastRequest):
         url = request.url.strip()
         summary_type = request.summary_type
         
+        # Validate input
+        if not url:
+            raise HTTPException(status_code=400, detail="URL is required")
+        
+        if not summary_type or summary_type not in ['ts', 'ns', 'bs']:
+            raise HTTPException(status_code=400, detail="Invalid summary type. Must be 'ts', 'ns', or 'bs'")
+        
         # Extract platform and episode ID for caching
         platform = CacheService.get_platform(url)
         episode_id = CacheService.extract_episode_id(url)
 
         # Validate platform and episode_id
         if platform == "unknown" or not episode_id:
-            raise HTTPException(status_code=400, detail="Unsupported podcast platform")
+            raise HTTPException(status_code=400, detail="Unsupported podcast platform. Only Apple Podcasts and Spotify are supported.")
         
         # Check cache first
         cached_result = CacheService.get_cached_episode(platform, episode_id, summary_type)
@@ -71,30 +78,43 @@ async def download_episode(request: PodcastRequest):
             }
         
         # If not cached, proceed with normal flow
+        data = None
         if "podcasts.apple.com" in url:
             data = get_audio.get_episode_audio_from_apple(url)
-            if data is None:
-                return {
-                    "message": "Episode not found",
-                    "error": True,
-                    "data": None,
-                    "cached": False
-                }
         elif "open.spotify.com" in url:
             data = get_audio.get_episode_audio_from_spotify(url)
-            if data is None:
-                return {
-                    "message": "Episode not found",
-                    "error": True,
-                    "data": None,
-                    "cached": False
-                }
         else:
-            raise HTTPException(status_code=400, detail="Unsupported podcast platform")
+            raise HTTPException(status_code=400, detail="Unsupported podcast platform. Only Apple Podcasts and Spotify are supported.")
+
+        # Handle errors from audio resolver
+        if data is None:
+            return {
+                "message": "Failed to process podcast URL. Please check the URL and try again.",
+                "error": True,
+                "data": None,
+                "cached": False
+            }
 
         if "error" in data:
             return {
                 "message": data["error"],
+                "error": True,
+                "data": None,
+                "cached": False
+            }
+
+        # Validate required fields
+        if not data.get("file_path"):
+            return {
+                "message": "Audio file not found or could not be downloaded.",
+                "error": True,
+                "data": None,
+                "cached": False
+            }
+
+        if not data.get("metadata"):
+            return {
+                "message": "Episode metadata not found.",
                 "error": True,
                 "data": None,
                 "cached": False
@@ -106,11 +126,13 @@ async def download_episode(request: PodcastRequest):
         data["platform"] = platform
         data["episode_id"] = episode_id
 
-        if data.get("file_path"):
+        # Emit event for processing
+        try:
             audio_upload_producer.emit_audio_uploaded(data)
-        else:
+        except Exception as e:
+            print(f"Error emitting audio_uploaded event: {e}")
             return {
-                "message": "No episode found or file path missing.",
+                "message": "Failed to start processing. Please try again.",
                 "error": True,
                 "data": None,
                 "cached": False
@@ -128,7 +150,12 @@ async def download_episode(request: PodcastRequest):
         raise
     except Exception as e:
         print(f"[Server Error] {e}")
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+        return {
+            "message": "Internal server error. Please try again later.",
+            "error": True,
+            "data": None,
+            "cached": False
+        }
 
 @app.get("/cache/stats")
 async def get_cache_stats():

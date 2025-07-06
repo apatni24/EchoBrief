@@ -229,9 +229,11 @@ class TestCacheEndpoints:
         assert response.headers["content-type"] == "application/json"
 
     @patch('cache_service.CacheService.get_cached_episode')
-    def test_submit_platform_detection(self, mock_get_cached):
+    @patch('podcast_audio_resolver_service.audio_upload_producer.emit_audio_uploaded')
+    def test_submit_platform_detection(self, mock_emit, mock_get_cached):
         """Test that platform detection works correctly in submit endpoint"""
         mock_get_cached.return_value = None
+        mock_emit.return_value = None  # Mock the emit function
         
         # Test Apple Podcasts
         with patch('podcast_audio_resolver_service.get_audio.get_episode_audio_from_apple') as mock_apple:
