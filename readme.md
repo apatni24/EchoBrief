@@ -215,4 +215,187 @@ EchoBrief supports the following summary formats:
 
 - **Bullet Points** (`bs`): Structured breakdown of key points
 - **Narrative** (`ns`): Story-style narrative summaries
-- **Takeaways** (`
+- **Takeaways** (`ts`): Key actionable takeaways and insights
+
+---
+
+## 📉 API Rate Limiting
+
+To comply with **ChatGroq API's per-minute token limit**, EchoBrief enforces:
+
+> ⏳ **A 60-second cooldown between successive LLM summarization requests**
+
+This ensures:
+
+- No unexpected rate-limit errors during high load
+- More predictable performance under concurrent usage
+- Graceful queuing of summaries without affecting user experience
+
+> The rate-limiting is implemented with an internal wait logic before calling the LLM API, keeping throughput compliant with usage constraints.
+
+---
+
+## 🧪 Testing
+
+EchoBrief includes comprehensive testing across all layers:
+
+### Backend Tests
+```bash
+# Run all cache tests
+python3 run_cache_tests.py
+
+# Run three-layer caching demonstration
+python3 test_three_layer_cache.py
+
+# Run specific test suites
+python3 -m pytest tests/test_cache_service.py -v
+python3 -m pytest tests/test_cache_endpoints.py -v
+python3 -m pytest tests/test_cache_integration.py -v
+
+# Run with coverage
+python3 -m pytest tests/test_cache_*.py --cov=cache_service --cov-report=html
+```
+
+### Frontend Tests
+```bash
+cd ../echobrief-frontend
+npm test -- --testPathPattern=CacheStats.test.jsx
+```
+
+### Test Coverage
+- **Cache Service**: Unit tests for all caching operations
+- **API Endpoints**: Authentication, error handling, and integration
+- **Frontend Components**: Cache statistics display and user interactions
+- **Integration**: Complete cache flow from request to storage
+
+---
+
+## 🚀 Getting Started (Local Dev)
+
+### Prerequisites
+```bash
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Install Node.js dependencies (for frontend)
+cd ../echobrief-frontend
+npm install
+```
+
+### Environment Variables
+```bash
+# Required for production
+ASSEMBLYAI_API_KEY=your_assemblyai_key
+CHATGROQ_API_KEY=your_chatgroq_key
+CHATGROQ_API_URL=https://api.chatgroq.com/v1
+UPSTASH_REDIS_HOST=your_redis_host
+UPSTASH_REDIS_PORT=6379
+UPSTASH_REDIS_PASSWORD=your_redis_password
+ADMIN_CACHE_KEY=your_admin_key
+
+# Optional
+ENV=dev  # or 'test' for testing
+MODEL_NAME=llama-3.3-70b-versatile
+```
+
+### Running the Application
+```bash
+# Build and run with Docker
+docker build -t echobrief .
+./start.sh
+
+# Or run services individually
+python3 -m uvicorn podcast_audio_resolver_service.main:app --host 0.0.0.0 --port 8080
+python3 -m uvicorn transcription_service.main:app --host 0.0.0.0 --port 8081
+python3 -m uvicorn summarization_service.main:app --host 0.0.0.0 --port 8082
+```
+
+You'll have:
+- All backend microservices up on internal ports
+- NGINX reverse proxy managing internal routes
+- Redis Streams wiring event flow between services
+- Multi-layer caching system active
+
+---
+
+## 🔧 Cache Configuration
+
+### Cache TTL Settings
+```python
+# Episode cache: 7 days
+EPISODE_CACHE_TTL = 7 * 24 * 60 * 60
+
+# Transcript cache: 7 days  
+TRANSCRIPT_CACHE_TTL = 7 * 24 * 60 * 60
+```
+
+### Cache Key Patterns
+```python
+# Episode cache keys
+"episode:{platform}:{episode_id}:{summary_type}"
+
+# Transcript cache keys (by file hash)
+"transcript:file:{file_hash}"
+
+# Local file cache (JSON file)
+audio_url -> {
+    "file_path": "audio_files/episode.mp3",
+    "file_hash": "md5_hash_of_file",
+    "episode_title": "Episode Title"
+}
+```
+
+### Cache Statistics
+The system provides real-time cache statistics:
+- Episode cache count
+- Transcript cache count (by file hash)
+- Local file cache count
+- Total cached items
+- Cache hit/miss ratios
+
+---
+
+## 🖼️ Frontend Screenshots
+
+![EchoBrief Frontend - Input Screen](./assets/frontend_input.png)  
+*User inputs podcast URL and selects summary type.*
+
+![EchoBrief Frontend - Summary Output](./assets/frontend_output.png)  
+*Generated summary is displayed live via WebSocket with cache indicators.*
+
+---
+
+## 👨‍💻 Author
+
+Built by [Atishay Patni](https://www.linkedin.com/in/atishaypatni)  
+SDE @ Wells Fargo | Backend Engineer 
+
+---
+
+## 📌 Future Enhancements
+
+- GPU-based transcription (WhisperX + PyAnnote)
+- Support for >30 min podcasts (chunking + parallel summary stitching)
+- Authentication and saved summary history
+- Podcast directory browsing from within the app
+- Advanced cache analytics and monitoring
+- Cache warming strategies for popular content
+- Multi-region cache distribution
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Ensure all tests pass
+5. Submit a pull request
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
