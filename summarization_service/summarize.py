@@ -1,7 +1,10 @@
 import os
 import time
-import requests
 from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+from langchain.prompts import PromptTemplate
+from langchain.chains import LLMChain, SequentialChain
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from summarization_service.summary_types import (
     bullet_points_summary as bps,
     narrative_summary as ns,
@@ -11,76 +14,87 @@ from summarization_service.summary_types import (
 load_dotenv()
 
 ENV = os.getenv("ENV", "dev")
-
-# Load environment variables
-CHATGROQ_API_KEY = os.getenv("CHATGROQ_API_KEY", "dummy-key" if ENV == "test" else None)
-CHATGROQ_API_URL = os.getenv("CHATGROQ_API_URL", "https://api.fakeurl.com/v1" if ENV == "test" else None)
-MODEL_NAME = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
-RANDOM_STRING = os.getenv("RANDOM_STRING", "default")
-
-# Fail fast if real keys are missing in non-test env
-if ENV != "test" and (not CHATGROQ_API_KEY or not CHATGROQ_API_URL):
-    raise RuntimeError("Missing CHATGROQ_API_KEY or CHATGROQ_API_URL in environment variables.")
+# Use ChatGroq as the OpenAI-compatible backend
+CHATGROQ_API_KEY = os.getenv("CHATGROQ_API_KEY")
+CHATGROQ_API_URL = os.getenv("CHATGROQ_API_URL", "https://api.chatgroq.com/v1")
 
 # Rate limiting: ensure at least 60 seconds between calls
-t_last_request_time = 0.0
+_t_last_request_time = 0.0
 
 def _rate_limit():
-    global t_last_request_time
+    global _t_last_request_time
     now = time.time()
-    elapsed = now - t_last_request_time
+    elapsed = now - _t_last_request_time
     if elapsed < 60:
         wait = 60 - elapsed
         print(f"[Summarizer] Rate limit in effect, sleeping for {wait:.1f}s...")
         time.sleep(wait)
-    t_last_request_time = time.time()
+    _t_last_request_time = time.time()
+
+# Step 1: Speaker Role Identification
+speaker_id_prompt = PromptTemplate(
+    input_variables=["transcript"],
+    template="""
+Given the following podcast transcript with speakers labeled as [Speaker 1], [Speaker 2], etc., infer the likely roles or identities of each speaker. Output a mapping like:
+Speaker 1: Host (Name if available)
+Speaker 2: Guest (Name if available)
+If names are not available, use roles only.
+Transcript:
+{transcript}
+"""
+)
 
 def get_summary(summary_type: str, transcript: str, episode_summary: str, show_title: str, show_summary: str) -> str:
-    print("[Summarizer] Generating summary...")
-
+    print("[Summarizer] Generating summary with LangChain (ChatGroq backend)...")
     _rate_limit()
 
-    try:
-        # Select prompt and system message
-        if summary_type == 'ts':
-            prompt = ts.get_prompt(transcript, episode_summary, show_title, show_summary)
-            system_message = ts.get_system_message()
-        elif summary_type == 'ns':
-            prompt = ns.get_prompt(transcript, episode_summary, show_title, show_summary)
-            system_message = ns.get_system_message()
-        else:
-            prompt = bps.get_prompt(transcript, episode_summary, show_title, show_summary)
-            system_message = bps.get_system_message()
+    # 1. Speaker Role Identification
+    llm = ChatOpenAI(
+        openai_api_key=CHATGROQ_API_KEY,
+        openai_api_base=CHATGROQ_API_URL,
+        temperature=0.2,
+        model_name="llama3-70b-8192"  # Use a ChatGroq-supported model
+    )
+    speaker_chain = LLMChain(llm=llm, prompt=speaker_id_prompt, output_key="speaker_roles")
+    speaker_roles = speaker_chain.run({"transcript": transcript})
 
-        payload = {
-            "model": MODEL_NAME,
-            "messages": [
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.2,
-            "max_completion_tokens": 16384
-        }
+    # 2. (Optional) Preprocess transcript to add speaker roles mapping at the top
+    processed_transcript = f"SPEAKER ROLES:\n{speaker_roles}\n\n{transcript}"
 
-        headers = {
-            "Authorization": f"Bearer {CHATGROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
+    # 3. Select summary prompt
+    if summary_type == 'ts':
+        prompt = PromptTemplate(
+            input_variables=["transcript", "episode_summary", "show_title", "show_summary"],
+            template=ts.get_prompt("{transcript}", "{episode_summary}", "{show_title}", "{show_summary}")
+        )
+    elif summary_type == 'ns':
+        prompt = PromptTemplate(
+            input_variables=["transcript", "episode_summary", "show_title", "show_summary"],
+            template=ns.get_prompt("{transcript}", "{episode_summary}", "{show_title}", "{show_summary}")
+        )
+    else:
+        prompt = PromptTemplate(
+            input_variables=["transcript", "episode_summary", "show_title", "show_summary"],
+            template=bps.get_prompt("{transcript}", "{episode_summary}", "{show_title}", "{show_summary}")
+        )
 
-        response = requests.post(CHATGROQ_API_URL, headers=headers, json=payload)
-        response.raise_for_status()
+    # 4. Chunk transcript if too long
+    splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
+    docs = splitter.create_documents([processed_transcript])
+    # For simplicity, concatenate all chunks for now (can use map-reduce/refine for large docs)
+    full_text = "\n".join([d.page_content for d in docs])
 
-        result = response.json()
-        choices = result.get("choices", [])
+    # 5. Run summary chain
+    summary_chain = LLMChain(
+        llm=llm,
+        prompt=prompt,
+        output_key="summary"
+    )
+    summary = summary_chain.run({
+        "transcript": full_text,
+        "episode_summary": episode_summary,
+        "show_title": show_title,
+        "show_summary": show_summary
+    })
 
-        if choices:
-            return choices[0].get("message", {}).get("content", "No content in response.")
-        else:
-            return "No response generated."
-
-    except requests.exceptions.RequestException as e:
-        print(f"[Summarizer] HTTP error: {e}")
-        return "Error: HTTP request failed."
-    except Exception as e:
-        print(f"[Summarizer] Unexpected error: {e}")
-        return "Error: Could not generate summary."
+    return summary

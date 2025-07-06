@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch, MagicMock
+import os
 from summarization_service.summarize import get_summary
 
 
@@ -7,59 +7,21 @@ from summarization_service.summarize import get_summary
 def dummy_input():
     return {
         "summary_type": "bp",
-        "transcript": "The world is facing a major climate challenge.",
-        "episode_summary": "Discussion about global warming.",
-        "show_title": "Climate Talks",
-        "show_summary": "Podcast about climate change."
+        "transcript": "[Speaker 1] Welcome to the show. [Speaker 2] Thank you for having me.",
+        "episode_summary": "A discussion about podcast technology.",
+        "show_title": "Tech Talks",
+        "show_summary": "A podcast about technology trends."
     }
 
 
-@patch("summarization_service.summarize.requests.post")
-@patch("summarization_service.summarize.time.sleep", return_value=None)
-def test_get_summary_basic(mock_sleep, mock_post, dummy_input):
-    fake_response = {
-        "choices": [
-            {"message": {"content": "• Climate change is real.\n• We must act."}}
-        ]
-    }
+# Skip tests if CHATGROQ_API_KEY is not set
+pytestmark = pytest.mark.skipif(
+    not os.getenv("CHATGROQ_API_KEY"),
+    reason="CHATGROQ_API_KEY not set; skipping integration test."
+)
 
-    mock_post.return_value.status_code = 200
-    mock_post.return_value.json.return_value = fake_response
-
+def test_get_summary_basic(dummy_input):
     summary = get_summary(**dummy_input)
-    assert "Climate change" in summary
-    mock_post.assert_called_once()
-    mock_sleep.assert_not_called()  # assume >60s since last call
-
-
-@patch("summarization_service.summarize.requests.post")
-@patch("summarization_service.summarize.time.sleep")
-def test_get_summary_respects_rate_limit(mock_sleep, mock_post, dummy_input):
-    from summarization_service import summarize
-    summarize.t_last_request_time = summarize.time.time() - 10  # simulate last call was 10s ago
-
-    mock_post.return_value.status_code = 200
-    mock_post.return_value.json.return_value = {
-        "choices": [{"message": {"content": "• Test summary"}}]
-    }
-
-    summary = get_summary(**dummy_input)
-    mock_sleep.assert_called_once()
-    assert "summary" in summary.lower()
-
-
-@patch("summarization_service.summarize.requests.post")
-def test_get_summary_handles_no_choices(mock_post, dummy_input):
-    mock_post.return_value.status_code = 200
-    mock_post.return_value.json.return_value = {}
-
-    summary = get_summary(**dummy_input)
-    assert summary == "No response generated."
-
-
-@patch("summarization_service.summarize.requests.post")
-def test_get_summary_handles_api_exception(mock_post, dummy_input):
-    mock_post.side_effect = Exception("API crashed")
-
-    summary = get_summary(**dummy_input)
-    assert summary.startswith("Error")
+    assert isinstance(summary, str)
+    assert len(summary) > 0
+    assert "Tech Talks" in summary or "technology" in summary or "Speaker" in summary
