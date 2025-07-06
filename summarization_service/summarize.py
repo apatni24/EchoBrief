@@ -47,7 +47,7 @@ Transcript:
 
 # Step 2: Transcript Validation and Correction
 transcript_validation_prompt = PromptTemplate(
-    input_variables=["transcript", "episode_title", "show_title", "episode_summary", "show_summary"],
+    input_variables=["transcript", "episode_title", "show_title", "episode_summary", "show_summary", "duration"],
     template="""
 You are a transcript validation expert. Review the podcast transcript and compare it with the provided metadata to ensure accuracy and consistency.
 
@@ -59,6 +59,7 @@ METADATA:
 - Show Title: {show_title}
 - Episode Summary: {episode_summary}
 - Show Summary: {show_summary}
+- Podcast Duration (seconds): {duration}
 
 TASK:
 1. Check for spelling errors, especially for:
@@ -72,6 +73,7 @@ TASK:
    - Does the content match the episode title?
    - Are the topics discussed consistent with the episode summary?
    - Are there any obvious transcription errors?
+   - Does the transcript length seem reasonable for the given duration? (e.g., a 60-minute podcast should have a much longer transcript than a 5-minute one)
 
 3. If you find issues, provide corrections in this format:
    CORRECTIONS:
@@ -84,11 +86,14 @@ TASK:
 5. Provide a brief validation summary:
    VALIDATION: [Brief assessment of transcript quality and alignment with metadata]
 
-Focus on accuracy while preserving the original meaning and speaker intent.
+IMPORTANT:
+- Do NOT invent or hallucinate content. Only validate and correct what is present in the transcript.
+- If the transcript is incomplete or inaccurate, do NOT generate hypothetical summaries or takeaways.
+- If the transcript is inconsistent with the metadata, suggest only minimal updates to the summary, do not rewrite it completely.
 """
 )
 
-def get_summary(summary_type: str, transcript: str, episode_summary: str, show_title: str, show_summary: str, episode_title: str = None) -> str:
+def get_summary(summary_type: str, transcript: str, episode_summary: str, show_title: str, show_summary: str, episode_title: str = None, duration: int = None) -> str:
     print("[Summarizer] Generating summary with LangChain (ChatGroq backend)...")
     _rate_limit()
 
@@ -112,7 +117,8 @@ def get_summary(summary_type: str, transcript: str, episode_summary: str, show_t
         "episode_title": episode_title or "Unknown Episode",
         "show_title": show_title,
         "episode_summary": episode_summary,
-        "show_summary": show_summary
+        "show_summary": show_summary,
+        "duration": duration or 0
     })
 
     # Parse validation result
@@ -173,6 +179,7 @@ Episode: {episode_title or "Unknown Episode"}
 Show: {show_title}
 Episode Summary: {episode_summary}
 Show Summary: {show_summary}
+Podcast Duration (seconds): {duration or 0}
 
 SPEAKER ROLES:
 {speaker_roles}
@@ -181,23 +188,28 @@ TRANSCRIPT:
 {corrected_transcript}
 
 VALIDATION SUMMARY:
-{validation_summary}"""
+{validation_summary}
+
+IMPORTANT:
+- Only summarize the provided transcript. Do NOT generate hypothetical summaries or takeaways if the transcript is incomplete or inaccurate.
+- If the transcript is inconsistent with the metadata, update the summary minimally, do not invent or rewrite it completely.
+"""
 
     # Step 5: Select summary prompt with enhanced metadata usage
     if summary_type == 'ts':
         prompt = PromptTemplate(
-            input_variables=["transcript", "episode_summary", "show_title", "show_summary", "episode_title"],
-            template=ts.get_prompt("{transcript}", "{episode_summary}", "{show_title}", "{show_summary}", "{episode_title}")
+            input_variables=["transcript", "episode_summary", "show_title", "show_summary", "episode_title", "duration"],
+            template=ts.get_prompt("{transcript}", "{episode_summary}", "{show_title}", "{show_summary}", "{episode_title}", "{duration}")
         )
     elif summary_type == 'ns':
         prompt = PromptTemplate(
-            input_variables=["transcript", "episode_summary", "show_title", "show_summary", "episode_title"],
-            template=ns.get_prompt("{transcript}", "{episode_summary}", "{show_title}", "{show_summary}", "{episode_title}")
+            input_variables=["transcript", "episode_summary", "show_title", "show_summary", "episode_title", "duration"],
+            template=ns.get_prompt("{transcript}", "{episode_summary}", "{show_title}", "{show_summary}", "{episode_title}", "{duration}")
         )
     else:
         prompt = PromptTemplate(
-            input_variables=["transcript", "episode_summary", "show_title", "show_summary", "episode_title"],
-            template=bps.get_prompt("{transcript}", "{episode_summary}", "{show_title}", "{show_summary}", "{episode_title}")
+            input_variables=["transcript", "episode_summary", "show_title", "show_summary", "episode_title", "duration"],
+            template=bps.get_prompt("{transcript}", "{episode_summary}", "{show_title}", "{show_summary}", "{episode_title}", "{duration}")
         )
 
     # Step 6: Chunk transcript if too long
@@ -217,7 +229,8 @@ VALIDATION SUMMARY:
         "episode_summary": episode_summary,
         "show_title": show_title,
         "show_summary": show_summary,
-        "episode_title": episode_title or "Unknown Episode"
+        "episode_title": episode_title or "Unknown Episode",
+        "duration": duration or 0
     })
 
     return summary

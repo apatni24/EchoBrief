@@ -29,8 +29,9 @@ Formatting Requirements:
 Remember: Your goal is to help readers extract maximum value and actionable insights from the episode."""
 
 
-def get_prompt(transcript: str, summary: str, show_title: str, show_summary: str, episode_title: str = None):
+def get_prompt(transcript: str, summary: str, show_title: str, show_summary: str, episode_title: str = None, duration: int = None):
     episode_context = f"Episode: {episode_title}" if episode_title else "Episode: [From transcript content]"
+    duration_context = f"Podcast Duration (seconds): {duration}" if duration is not None else ""
     
     return f"""Extract actionable insights from this podcast episode.
 
@@ -42,6 +43,11 @@ CONTEXT:
 - Episode Description: {summary}
 - Show: {show_title}
 - Show Description: {show_summary}
+- {duration_context}
+
+IMPORTANT:
+- Only summarize the provided transcript. Do NOT generate hypothetical summaries or takeaways if the transcript is incomplete or inaccurate.
+- If the transcript is inconsistent with the metadata, update the summary minimally, do not invent or rewrite it completely.
 
 TASK:
 Create a takeaways summary with:
