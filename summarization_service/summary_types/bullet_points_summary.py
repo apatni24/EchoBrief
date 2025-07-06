@@ -29,14 +29,17 @@ Formatting Requirements:
 Remember: Your goal is to help readers quickly grasp the episode's core content and insights."""
 
 
-def get_prompt(transcript: str, summary: str, show_title: str, show_summary: str):
+def get_prompt(transcript: str, summary: str, show_title: str, show_summary: str, episode_title: str = None):
+    episode_context = f"Episode: {episode_title}" if episode_title else "Episode: [From transcript content]"
+    
     return f"""Create a bullet-point summary of this podcast episode.
 
 TRANSCRIPT:
 {transcript}
 
 CONTEXT:
-- Episode: {summary}
+- {episode_context}
+- Episode Description: {summary}
 - Show: {show_title}
 - Show Description: {show_summary}
 

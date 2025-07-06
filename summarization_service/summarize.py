@@ -1,5 +1,6 @@
 import os
 import time
+import re
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
@@ -44,47 +45,168 @@ Transcript:
 """
 )
 
-def get_summary(summary_type: str, transcript: str, episode_summary: str, show_title: str, show_summary: str) -> str:
+# Step 2: Transcript Validation and Correction
+transcript_validation_prompt = PromptTemplate(
+    input_variables=["transcript", "episode_title", "show_title", "episode_summary", "show_summary"],
+    template="""
+You are a transcript validation expert. Review the podcast transcript and compare it with the provided metadata to ensure accuracy and consistency.
+
+TRANSCRIPT:
+{transcript}
+
+METADATA:
+- Episode Title: {episode_title}
+- Show Title: {show_title}
+- Episode Summary: {episode_summary}
+- Show Summary: {show_summary}
+
+TASK:
+1. Check for spelling errors, especially for:
+   - Names mentioned in the episode
+   - Technical terms
+   - Place names
+   - Company names
+   - Any terms that appear in the metadata
+
+2. Verify the transcript aligns with the episode metadata:
+   - Does the content match the episode title?
+   - Are the topics discussed consistent with the episode summary?
+   - Are there any obvious transcription errors?
+
+3. If you find issues, provide corrections in this format:
+   CORRECTIONS:
+   - [Original text] → [Corrected text]
+   - [Another error] → [Correction]
+
+4. If no corrections are needed, respond with:
+   CORRECTIONS: None needed
+
+5. Provide a brief validation summary:
+   VALIDATION: [Brief assessment of transcript quality and alignment with metadata]
+
+Focus on accuracy while preserving the original meaning and speaker intent.
+"""
+)
+
+def get_summary(summary_type: str, transcript: str, episode_summary: str, show_title: str, show_summary: str, episode_title: str = None) -> str:
     print("[Summarizer] Generating summary with LangChain (ChatGroq backend)...")
     _rate_limit()
 
-    # 1. Speaker Role Identification
+    # Initialize LLM
     llm = ChatOpenAI(
         openai_api_key=CHATGROQ_API_KEY,
         openai_api_base=CHATGROQ_API_URL,
         temperature=0.2,
         model_name="llama3-70b-8192"  # Use a ChatGroq-supported model
     )
+
+    # Step 1: Speaker Role Identification
     speaker_chain = LLMChain(llm=llm, prompt=speaker_id_prompt, output_key="speaker_roles")
     speaker_roles = speaker_chain.run({"transcript": transcript})
 
-    # 2. (Optional) Preprocess transcript to add speaker roles mapping at the top
-    processed_transcript = f"SPEAKER ROLES:\n{speaker_roles}\n\n{transcript}"
+    # Step 2: Transcript Validation and Correction
+    print("[Summarizer] Validating transcript against metadata...")
+    validation_chain = LLMChain(llm=llm, prompt=transcript_validation_prompt, output_key="validation_result")
+    validation_result = validation_chain.run({
+        "transcript": transcript,
+        "episode_title": episode_title or "Unknown Episode",
+        "show_title": show_title,
+        "episode_summary": episode_summary,
+        "show_summary": show_summary
+    })
 
-    # 3. Select summary prompt
+    # Parse validation result
+    corrections = []
+    validation_summary = ""
+    
+    # Extract corrections and validation summary from the result
+    lines = validation_result.split('\n')
+    in_corrections = False
+    in_validation = False
+    
+    for line in lines:
+        line = line.strip()
+        if line.startswith("CORRECTIONS:"):
+            in_corrections = True
+            in_validation = False
+            if "None needed" in line:
+                corrections = []
+            continue
+        elif line.startswith("VALIDATION:"):
+            in_corrections = False
+            in_validation = True
+            validation_summary = line.replace("VALIDATION:", "").strip()
+            continue
+        elif line == "":
+            in_corrections = False
+            in_validation = False
+            continue
+        
+        if in_corrections and "→" in line:
+            corrections.append(line)
+        elif in_validation and validation_summary == "":
+            validation_summary = line
+
+    print(f"[Summarizer] Validation complete: {validation_summary}")
+    if corrections:
+        print(f"[Summarizer] Found {len(corrections)} corrections needed")
+        for correction in corrections:
+            print(f"  {correction}")
+
+    # Step 3: Apply corrections to transcript if needed
+    corrected_transcript = transcript
+    if corrections:
+        print("[Summarizer] Applying corrections to transcript...")
+        for correction in corrections:
+            if "→" in correction:
+                original, corrected = correction.split("→")
+                original = original.strip()
+                corrected = corrected.strip()
+                # Use regex to replace the original text with corrected text
+                corrected_transcript = re.sub(re.escape(original), corrected, corrected_transcript, flags=re.IGNORECASE)
+    else:
+        corrected_transcript = transcript
+
+    # Step 4: Preprocess transcript to add speaker roles mapping and metadata context
+    processed_transcript = f"""METADATA CONTEXT:
+Episode: {episode_title or "Unknown Episode"}
+Show: {show_title}
+Episode Summary: {episode_summary}
+Show Summary: {show_summary}
+
+SPEAKER ROLES:
+{speaker_roles}
+
+TRANSCRIPT:
+{corrected_transcript}
+
+VALIDATION SUMMARY:
+{validation_summary}"""
+
+    # Step 5: Select summary prompt with enhanced metadata usage
     if summary_type == 'ts':
         prompt = PromptTemplate(
-            input_variables=["transcript", "episode_summary", "show_title", "show_summary"],
-            template=ts.get_prompt("{transcript}", "{episode_summary}", "{show_title}", "{show_summary}")
+            input_variables=["transcript", "episode_summary", "show_title", "show_summary", "episode_title"],
+            template=ts.get_prompt("{transcript}", "{episode_summary}", "{show_title}", "{show_summary}", "{episode_title}")
         )
     elif summary_type == 'ns':
         prompt = PromptTemplate(
-            input_variables=["transcript", "episode_summary", "show_title", "show_summary"],
-            template=ns.get_prompt("{transcript}", "{episode_summary}", "{show_title}", "{show_summary}")
+            input_variables=["transcript", "episode_summary", "show_title", "show_summary", "episode_title"],
+            template=ns.get_prompt("{transcript}", "{episode_summary}", "{show_title}", "{show_summary}", "{episode_title}")
         )
     else:
         prompt = PromptTemplate(
-            input_variables=["transcript", "episode_summary", "show_title", "show_summary"],
-            template=bps.get_prompt("{transcript}", "{episode_summary}", "{show_title}", "{show_summary}")
+            input_variables=["transcript", "episode_summary", "show_title", "show_summary", "episode_title"],
+            template=bps.get_prompt("{transcript}", "{episode_summary}", "{show_title}", "{show_summary}", "{episode_title}")
         )
 
-    # 4. Chunk transcript if too long
+    # Step 6: Chunk transcript if too long
     splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
     docs = splitter.create_documents([processed_transcript])
     # For simplicity, concatenate all chunks for now (can use map-reduce/refine for large docs)
     full_text = "\n".join([d.page_content for d in docs])
 
-    # 5. Run summary chain
+    # Step 7: Run summary chain with enhanced metadata
     summary_chain = LLMChain(
         llm=llm,
         prompt=prompt,
@@ -94,7 +216,8 @@ def get_summary(summary_type: str, transcript: str, episode_summary: str, show_t
         "transcript": full_text,
         "episode_summary": episode_summary,
         "show_title": show_title,
-        "show_summary": show_summary
+        "show_summary": show_summary,
+        "episode_title": episode_title or "Unknown Episode"
     })
 
     return summary
