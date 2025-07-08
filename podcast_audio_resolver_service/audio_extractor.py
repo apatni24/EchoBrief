@@ -4,9 +4,12 @@ import feedparser
 import hashlib
 import json
 from pathlib import Path
+import time
 
 # Cache file to store audio URL to local file mappings
 CACHE_FILE = "audio_files/download_cache.json"
+RSS_CACHE_DIR = "rss_cache"
+RSS_CACHE_TTL = 3600  # 1 hour
 
 def load_download_cache():
     """Load the download cache from file"""
@@ -174,7 +177,7 @@ def download_episode_audio_with_episode_id(rss_url, apple_episode_id):
     """
     Parse RSS feed, find the episode by Episode ID, and download the audio file.
     """
-    feed = feedparser.parse(rss_url)
+    feed = get_cached_feed(rss_url)
 
     for entry in feed.entries:
         guid = entry.get('guid', '')
@@ -249,12 +252,32 @@ def duration_to_seconds(duration_str: str) -> int:
     hours, minutes, seconds = map(int, duration_str.split(':'))
     return hours * 3600 + minutes * 60 + seconds
 
+def get_cached_feed(rss_url):
+    os.makedirs(RSS_CACHE_DIR, exist_ok=True)
+    cache_key = hashlib.md5(rss_url.encode()).hexdigest()
+    cache_path = os.path.join(RSS_CACHE_DIR, f"{cache_key}.xml")
+    now = time.time()
 
+    # Check cache
+    if os.path.exists(cache_path):
+        mtime = os.path.getmtime(cache_path)
+        if now - mtime < RSS_CACHE_TTL:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                xml = f.read()
+            return feedparser.parse(xml)
+
+    # Fetch and parse
+    resp = requests.get(rss_url, timeout=10)
+    resp.raise_for_status()
+    xml = resp.text
+    with open(cache_path, "w", encoding="utf-8") as f:
+        f.write(xml)
+    return feedparser.parse(xml)
 
 def download_audio_and_get_metadata(rss_url, episode_title):
     try:
         print("Processing RSS URL...")
-        feed = feedparser.parse(rss_url)
+        feed = get_cached_feed(rss_url)
         
         if not feed.entries:
             return {

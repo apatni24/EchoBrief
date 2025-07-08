@@ -16,7 +16,7 @@ EchoBrief was built to solve real-world backend engineering challenges. It showc
 
 - 🔄 Loose coupling across services using Redis Streams
 - 📡 Real-time updates with WebSockets for instant feedback
-- 🧠 Scalable summarization via LLaMA 3.3 70B LLMs
+- 🧠 Scalable summarization via OpenRouter (deepseek/deepseek-r1-distill-llama-70b:free)
 - 🐳 Unified Dockerized deployment with internal NGINX routing
 - 🚦 Thoughtful design to handle cold starts and API rate limits
 - 💾 **Three-layer caching system for optimal performance**
@@ -50,7 +50,7 @@ This design choice avoids multiple Dockerfiles and leverages Render's free-tier 
 
 3. **Summarization Service** (Port 8082)
    - Consumes `transcription_complete` events
-   - Generates summaries using LLaMA 3.3 70B
+   - Generates summaries using OpenRouter (deepseek/deepseek-r1-distill-llama-70b:free)
    - Sends real-time updates via WebSockets
 
 ---
@@ -59,6 +59,7 @@ This design choice avoids multiple Dockerfiles and leverages Render's free-tier 
 
 - **Three-Layer Caching**: Now includes episode cache, local file cache, and transcript cache for maximum performance and cost savings.
 - **Google Login & Usage Limits**: Anonymous users are limited to 10 podcasts or 150 minutes; Google login unlocks unlimited access (see frontend).
+- **Summarization LLM Migration**: Switched from ChatGroq/LLaMA to OpenRouter (deepseek/deepseek-r1-distill-llama-70b:free) for all LLM summarization tasks. See ENV setup below.
 - **Mobile-Responsive Frontend**: All UI components are now fully responsive and optimized for mobile devices.
 - **File Hash Optimization**: File hashes are computed during download, never requiring a second read.
 - **Admin Cache Controls**: Invalidate, clear, and view cache stats via API endpoints.
@@ -157,7 +158,7 @@ Here's a sample event payload passed to the Redis Stream (`audio_uploaded`) when
 |--------------------|------------------------------------------|
 | Audio Resolution   | Python + feedparser                      |
 | Transcription      | AssemblyAI (diarization + speech-to-text)|
-| Summarization      | LLaMA 3.3 70B Versatile (via API)        |
+| Summarization      | OpenRouter (deepseek/deepseek-r1-distill-llama-70b:free) |
 | Events             | Redis Streams (Upstash – Singapore)      |
 | Real-Time Updates  | WebSockets                               |
 | Caching            | Redis (Upstash) with multi-layer strategy|
@@ -286,8 +287,6 @@ npm install
 ```bash
 # Required for production
 ASSEMBLYAI_API_KEY=your_assemblyai_key
-CHATGROQ_API_KEY=your_chatgroq_key
-CHATGROQ_API_URL=https://api.chatgroq.com/v1
 UPSTASH_REDIS_HOST=your_redis_host
 UPSTASH_REDIS_PORT=6379
 UPSTASH_REDIS_PASSWORD=your_redis_password
@@ -296,6 +295,13 @@ ADMIN_CACHE_KEY=your_admin_key
 # Optional
 ENV=dev  # or 'test' for testing
 MODEL_NAME=llama-3.3-70b-versatile
+
+# OpenRouter LLM API (required for summarization)
+OPENROUTER_API_KEY=your_openrouter_api_key
+# Optional: for load distribution (if you have a second key)
+OPENROUTER_API_KEY2=your_second_openrouter_api_key
+# Optional: override the default API base URL
+OPENROUTER_API_URL=https://openrouter.ai/api/v1
 ```
 
 ### Running the Application
