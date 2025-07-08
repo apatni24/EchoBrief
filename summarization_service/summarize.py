@@ -15,10 +15,11 @@ from summarization_service.summary_types import (
 load_dotenv()
 
 ENV = os.getenv("ENV", "dev")
-# Use ChatGroq as the OpenAI-compatible backend
-CHATGROQ_API_KEY = os.getenv("CHATGROQ_API_KEY")
-CHATGROQ_API_KEY2 = os.getenv("CHATGROQ_API_KEY2")  # Second API key for load distribution
-CHATGROQ_API_URL = os.getenv("CHATGROQ_API_URL", "https://api.chatgroq.com/v1")
+# Use OpenRouter as the OpenAI-compatible backend
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_API_KEY2 = os.getenv("OPENROUTER_API_KEY2")  # Second API key for load distribution
+OPENROUTER_API_URL = os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1")
+OPENROUTER_MODEL = "deepseek/deepseek-r1-distill-llama-70b:free"
 
 # Rate limiting: ensure at least 60 seconds between calls
 _t_last_request_time = 0.0
@@ -39,22 +40,23 @@ def _get_next_api_key():
     global _api_key_usage_counter
     _api_key_usage_counter += 1
     
-    # Use CHATGROQ_API_KEY2 if available, otherwise fall back to primary key
-    if CHATGROQ_API_KEY2 and _api_key_usage_counter % 2 == 0:
-        print(f"[Summarizer] Using secondary API key (call #{_api_key_usage_counter})")
-        return CHATGROQ_API_KEY2
+    # Use OPENROUTER_API_KEY2 if available, otherwise fall back to primary key
+    if OPENROUTER_API_KEY2 and _api_key_usage_counter % 2 == 0:
+        print(f"[Summarizer] Using secondary OpenRouter API key (call #{_api_key_usage_counter})")
+        return OPENROUTER_API_KEY2
     else:
-        print(f"[Summarizer] Using primary API key (call #{_api_key_usage_counter})")
-        return CHATGROQ_API_KEY
+        print(f"[Summarizer] Using primary OpenRouter API key (call #{_api_key_usage_counter})")
+        return OPENROUTER_API_KEY
 
-def _create_llm(model_name, temperature=0.2):
+def _create_llm(model_name=None, temperature=0.2):
     """Create LLM instance with the next available API key"""
     api_key = _get_next_api_key()
+    # Always use the OpenRouter model specified
     return ChatOpenAI(
         openai_api_key=api_key,
-        openai_api_base=CHATGROQ_API_URL,
+        openai_api_base=OPENROUTER_API_URL,
         temperature=temperature,
-        model_name=model_name
+        model_name=OPENROUTER_MODEL
     )
 
 def safe_llm_run(chain, input_data, max_retries=3, initial_chunk_size=2000):
@@ -176,16 +178,16 @@ IMPORTANT:
 )
 
 def get_summary(summary_type: str, transcript: str, episode_summary: str, show_title: str, show_summary: str, episode_title: str = None, duration: int = None) -> str:
-    print("[Summarizer] Generating summary with LangChain (ChatGroq backend)...")
+    print("[Summarizer] Generating summary with LangChain (OpenRouter backend)...")
     _rate_limit()
 
-    # Step 1: Speaker Role Identification (use cheaper model)
+    # Step 1: Speaker Role Identification (use OpenRouter model for both tasks)
     print("[Summarizer] Step 1: Identifying speaker roles...")
-    cheap_llm = _create_llm("llama3-8b-8192", temperature=0.2)  # Cheaper model for less critical task
+    cheap_llm = _create_llm(temperature=0.2)  # Use OpenRouter model for both
     speaker_chain = LLMChain(llm=cheap_llm, prompt=speaker_id_prompt, output_key="speaker_roles")
     speaker_roles = safe_llm_run(speaker_chain, {"transcript": transcript})
 
-    # Step 2: Transcript Validation and Correction (use cheaper model)
+    # Step 2: Transcript Validation and Correction (use OpenRouter model)
     print("[Summarizer] Step 2: Validating transcript against metadata...")
     validation_chain = LLMChain(llm=cheap_llm, prompt=transcript_validation_prompt, output_key="validation_result")
     validation_result = safe_llm_run(validation_chain, {
@@ -294,9 +296,9 @@ IMPORTANT:
     # For simplicity, concatenate all chunks for now (can use map-reduce/refine for large docs)
     full_text = "\n".join([d.page_content for d in docs])
 
-    # Step 7: Run summary chain with enhanced metadata (use best quality model)
+    # Step 7: Run summary chain with enhanced metadata (use OpenRouter model)
     print("[Summarizer] Step 3: Generating final summary...")
-    main_llm = _create_llm("llama3-70b-8192", temperature=0.2)  # Best quality model for final summary
+    main_llm = _create_llm(temperature=0.2)  # Use OpenRouter model for final summary
     summary_chain = LLMChain(
         llm=main_llm,
         prompt=prompt,

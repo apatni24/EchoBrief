@@ -17,10 +17,10 @@ def dummy_input():
     }
 
 
-# Skip tests if CHATGROQ_API_KEY is not set
+# Skip tests if OPENROUTER_API_KEY is not set
 pytestmark = pytest.mark.skipif(
-    not os.getenv("CHATGROQ_API_KEY"),
-    reason="CHATGROQ_API_KEY not set; skipping integration test."
+    not os.getenv("OPENROUTER_API_KEY"),
+    reason="OPENROUTER_API_KEY not set; skipping integration test."
 )
 
 def test_get_summary_basic(dummy_input):
