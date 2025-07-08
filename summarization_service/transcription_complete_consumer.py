@@ -90,6 +90,7 @@ def consume_transcription_completed(loop):
                                 transcript_data
                             )
                         # Cache the episode result
+                        cached_at = None
                         if "platform" in parsed and "episode_id" in parsed:
                             episode_data = {
                                 "summary": summary,
@@ -105,10 +106,19 @@ def consume_transcription_completed(loop):
                                 parsed["summary_type"],
                                 episode_data
                             )
+                            # Try to get the cached episode to retrieve cached_at
+                            cached_episode = CacheService.get_cached_episode(
+                                parsed["platform"],
+                                parsed["episode_id"],
+                                parsed["summary_type"]
+                            )
+                            if cached_episode and "cached_at" in cached_episode:
+                                cached_at = cached_episode["cached_at"]
                         payload = {
                             "job_id": parsed["job_id"],
                             "status": "done",
                             "summary": summary,
+                            "cached_at": cached_at
                         }
                     except Exception as err:
                         print("[Error] Failed to generate or cache summary:", err)
