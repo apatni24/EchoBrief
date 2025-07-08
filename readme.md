@@ -8,6 +8,29 @@
 > ⏱️ **Summarizes a 30-minute podcast in <90 seconds**  
 > 🌍 Deployed on low-latency infrastructure (Singapore – Render + Upstash)
 
+## 📚 Table of Contents
+- [Why This Project Stands Out](#-why-this-project-stands-out)
+- [Architecture](#-architecture)
+- [Recent Updates](#-recent-updates-2024)
+- [Three-Layer Caching System](#-three-layer-caching-system-2024)
+- [RSS Feed Caching](#-rss-feed-caching)
+- [Real-Time Stage Acknowledgement](#-real-time-stage-acknowledgement)
+- [Usage Limits & Authentication](#-usage-limits--authentication)
+- [Cold Start Optimization](#-cold-start-optimization)
+- [Example Payload](#-example-payload)
+- [Tech Stack](#-tech-stack)
+- [Project Structure](#-project-structure)
+- [Summary Types Supported](#-summary-types-supported)
+- [API Rate Limiting](#-api-rate-limiting)
+- [Testing](#-testing)
+- [Getting Started (Local Dev)](#-getting-started-local-dev)
+- [Cache Configuration](#-cache-configuration)
+- [Frontend Screenshots](#-frontend-screenshots)
+- [Author](#-author)
+- [Future Enhancements](#-future-enhancements)
+- [Contributing](#-contributing)
+- [License](#-license)
+
 ---
 
 ## 🧠 Why This Project Stands Out
@@ -109,6 +132,46 @@ graph TD;
 - **Cache miss**: 50–110s (full processing)
 - **File hash**: Always computed during download (never reads file twice)
 - **Cross-platform**: Identical content is cached regardless of source
+
+---
+
+## 🗂️ RSS Feed Caching
+
+To speed up repeated podcast lookups, EchoBrief now implements a file-based RSS feed cache:
+- **Location:** `echobrief-backend/rss_cache/`
+- **Key:** MD5 hash of the RSS feed URL
+- **Value:** Raw XML of the RSS feed
+- **TTL:** 1 hour (feeds are refreshed after expiry)
+- **Benefit:** Dramatically reduces latency for popular podcasts and avoids repeated network requests for the same feed.
+
+This cache is used automatically by the audio resolver service. No manual intervention is required.
+
+---
+
+## ⚡ Real-Time Stage Acknowledgement
+
+EchoBrief now provides instant feedback to users about backend progress:
+- As soon as the backend receives a `transcription_complete` event, it sends a WebSocket message to the frontend with status `summarization_received`.
+- The frontend immediately updates the stage indicator to "Summarizing..." so users know their request is being processed by the LLM.
+- When the summary is ready, a second WebSocket message delivers the result and moves the stage to "Complete".
+
+**This ensures a more responsive and transparent user experience, especially for longer episodes.**
+
+---
+
+## 🕒 Troubleshooting & Timing
+
+- **Where can delays occur?**
+  - **RSS Feed Download:** Large or slow feeds can take several seconds. Now mitigated by RSS feed caching.
+  - **Audio Download:** Only happens on cache miss; otherwise instant.
+  - **Transcription:** AssemblyAI is fast, but large files may take up to a minute.
+  - **Summarization:** LLM call via OpenRouter; typically 10–30 seconds.
+  - **Cache Hits:** All layers (episode, file, transcript, RSS) are designed for sub-second response times.
+
+- **How to diagnose?**
+  - Check logs for cache hit/miss statistics.
+  - Use the `/cache/stats` endpoint for real-time cache metrics.
+  - Enable debug logging for detailed timing breakdowns.
 
 ---
 
@@ -292,16 +355,16 @@ UPSTASH_REDIS_PORT=6379
 UPSTASH_REDIS_PASSWORD=your_redis_password
 ADMIN_CACHE_KEY=your_admin_key
 
-# Optional
-ENV=dev  # or 'test' for testing
-MODEL_NAME=llama-3.3-70b-versatile
-
 # OpenRouter LLM API (required for summarization)
 OPENROUTER_API_KEY=your_openrouter_api_key
 # Optional: for load distribution (if you have a second key)
 OPENROUTER_API_KEY2=your_second_openrouter_api_key
 # Optional: override the default API base URL
 OPENROUTER_API_URL=https://openrouter.ai/api/v1
+
+# Optional
+ENV=dev  # or 'test' for testing
+MODEL_NAME=deepseek/deepseek-r1-distill-llama-70b:free
 ```
 
 ### Running the Application
