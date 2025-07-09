@@ -15,6 +15,7 @@
 - [Three-Layer Caching System](#-three-layer-caching-system-2024)
 - [RSS Feed Caching](#-rss-feed-caching)
 - [Real-Time Stage Acknowledgement](#-real-time-stage-acknowledgement)
+- [LangChain Summarization Flow](#-langchain-summarization-flow)
 - [Usage Limits & Authentication](#-usage-limits--authentication)
 - [Cold Start Optimization](#-cold-start-optimization)
 - [Example Payload](#-example-payload)
@@ -75,6 +76,31 @@ This design choice avoids multiple Dockerfiles and leverages Render's free-tier 
    - Consumes `transcription_complete` events
    - Generates summaries using OpenRouter (deepseek/deepseek-r1-distill-llama-70b:free)
    - Sends real-time updates via WebSockets
+
+## 🦜🔗 LangChain Summarization Flow
+
+EchoBrief uses [LangChain](https://python.langchain.com/) to orchestrate the LLM-based summarization process. Here's how it works:
+
+1. **Prompt Construction:**
+   - For each summary request, a prompt template is selected based on the summary type (bullet points, narrative, or takeaways).
+   - The prompt includes the transcript, episode/show metadata, and (if available) the episode title and duration.
+
+2. **LLM Chain Setup:**
+   - The service uses LangChain's `ChatOpenAI` wrapper, configured to use OpenRouter as an OpenAI-compatible backend.
+   - The model is always set to `deepseek/deepseek-r1-distill-llama-70b:free`.
+   - API key rotation is supported for load distribution (using `OPENROUTER_API_KEY` and `OPENROUTER_API_KEY2`).
+
+3. **Rate Limiting:**
+   - To comply with OpenRouter's rate limits, the service enforces a 60-second cooldown between LLM calls.
+
+4. **Summary Generation:**
+   - The constructed prompt is sent to the LLM via LangChain's chain interface.
+   - The output is parsed and returned to the user, and also cached for future requests.
+
+5. **Summary Types:**
+   - The summarization service supports three types: bullet points, narrative, and takeaways, each with its own prompt logic and output format.
+
+**This modular approach makes it easy to add new summary types, swap LLM providers, or adjust prompt logic as needed.**
 
 ---
 

@@ -27,6 +27,17 @@ def consume_transcription_completed(loop):
                     parsed = json.loads(raw)
 
                     try:
+                        # Send immediate acknowledgement to frontend BEFORE any summary/caching work
+                        ack_payload = {
+                            "job_id": parsed["job_id"],
+                            "status": "summarization_received",
+                            "message": "Received for summarization. Generating summary..."
+                        }
+                        loop.call_soon_threadsafe(
+                            asyncio.create_task,
+                            manager.broadcast(parsed["job_id"], ack_payload)
+                        )
+                        # Now proceed with summary/caching logic
                         # Extract episode title from metadata
                         episode_title = None
                         duration = None
@@ -120,16 +131,6 @@ def consume_transcription_completed(loop):
                             "summary": summary,
                             "cached_at": cached_at
                         }
-                        # Send immediate acknowledgement to frontend
-                        ack_payload = {
-                            "job_id": parsed["job_id"],
-                            "status": "summarization_received",
-                            "message": "Received for summarization. Generating summary..."
-                        }
-                        loop.call_soon_threadsafe(
-                            asyncio.create_task,
-                            manager.broadcast(parsed["job_id"], ack_payload)
-                        )
                     except Exception as err:
                         print("[Error] Failed to generate or cache summary:", err)
                         payload = {
