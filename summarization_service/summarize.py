@@ -19,7 +19,7 @@ ENV = os.getenv("ENV", "dev")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_API_KEY2 = os.getenv("OPENROUTER_API_KEY2")  # Second API key for load distribution
 OPENROUTER_API_URL = os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1")
-OPENROUTER_MODEL = "deepseek/deepseek-r1-distill-llama-70b:free"
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL_NAME", "meta-llama/llama-3.3-70b-instruct:free")
 
 # Rate limiting: ensure at least 60 seconds between calls
 _t_last_request_time = 0.0
