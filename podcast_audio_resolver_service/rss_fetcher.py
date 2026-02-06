@@ -10,6 +10,7 @@ load_dotenv()
 ENV = os.getenv("ENV", "dev")
 API_KEY = os.getenv("PODCAST_INDEX_API_KEY", "dummy-key" if ENV == "test" else None)
 API_SECRET = os.getenv("PODCAST_INDEX_API_SECRET", "dummy-secret" if ENV == "test" else None)
+USER_AGENT = os.getenv("USER_AGENT", "EchoBrief/1.0")
 
 if ENV != "test" and (not API_KEY or not API_SECRET):
     raise RuntimeError("Missing PODCAST_INDEX_API_KEY or PODCAST_INDEX_API_SECRET")
@@ -26,7 +27,7 @@ def _get_auth_headers():
         'X-Auth-Date': str(epoch_time),
         'X-Auth-Key': API_KEY,
         'Authorization': sha_1,
-        'User-Agent': 'podcasting-index-python-client'
+        'User-Agent': USER_AGENT
     }
 
 
