@@ -6,6 +6,8 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain, SequentialChain
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_none
+from agent.errors import is_transient_exception
 from summarization_service.summary_types import (
     bullet_points_summary as bps,
     narrative_summary as ns,
@@ -25,12 +27,17 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL_NAME", "meta-llama/llama-3.3-70b-
 _t_last_request_time = 0.0
 _api_key_usage_counter = 0  # Track which API key to use next
 
+def cooldown_remaining() -> float:
+    """Seconds until the next LLM call is allowed. Does not sleep."""
+    elapsed = time.time() - _t_last_request_time
+    if elapsed >= 60:
+        return 0.0
+    return 60.0 - elapsed
+
 def _rate_limit():
     global _t_last_request_time
-    now = time.time()
-    elapsed = now - _t_last_request_time
-    if elapsed < 60:
-        wait = 60 - elapsed
+    wait = cooldown_remaining()
+    if wait > 0:
         print(f"[Summarizer] Rate limit in effect, sleeping for {wait:.1f}s...")
         time.sleep(wait)
     _t_last_request_time = time.time()
@@ -177,6 +184,12 @@ IMPORTANT:
 """
 )
 
+@retry(
+    reraise=True,
+    stop=stop_after_attempt(3),
+    wait=wait_none(),
+    retry=retry_if_exception(is_transient_exception),
+)
 def get_summary(summary_type: str, transcript: str, episode_summary: str, show_title: str, show_summary: str, episode_title: str = None, duration: int = None) -> str:
     print("[Summarizer] Generating summary with LangChain (OpenRouter backend)...")
     _rate_limit()

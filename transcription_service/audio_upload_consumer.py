@@ -1,107 +1,122 @@
-from redis_stream_client import redis_client, AUDIO_UPLOADED_STREAM
+from redis_stream_client import AUDIO_UPLOADED_STREAM, TRANSCRIPTION_GROUP, ensure_consumer_group
 from transcription_service import assemblyai_transcriber, transcription_complete_producer
 from cache_service import CacheService
-import asyncio, json, time
+from agent import jobs
+from agent.audit import log_event
+from agent.delivery import ack, consume_loop, fail_stage
+from agent.errors import is_transient_exception
+import asyncio
 import hashlib
+import json
 import os
 
 
-temp_msg = """[Speaker A] You're listening to TED Talks Daily where we bring you new ideas to spark your curiosity every day. I'm your host, Elise Hume. People living across the South Pacific in island nations like Polynesia and Micronesia make up less than 1% of global greenhouse gas emissions and yet they are among the most vulnerable to the threat of climate change. But climate justice advocate Fenton Lutana Tabua doesn't want to feed into the narrative that they are only victims of the climate crisis waiting to be saved. In his 2024 talk, Fenton, a Fiji native himself shares the importance of using community led storytelling to break stereotypes of victimhood.
-[Speaker B] Long ago, when I was maybe 10 or 11 years old, I remember my grandfather took me out fishing. We were standing out by the ocean on some rocks and my PA had a spear in his hand and a smile in his eyes, waiting for dinner to swim by. To pass the time, my PA would tell me stories about his old people. That day he told me that we come from a long line of boat builders and fisher folk and that the ocean would always be kind to us. This was my past truth, his story. And his story was what put food on the table for my mother and her siblings. Growing up, the stories that I was surrounded by taught me that I was linked to the ocean and that the ocean was linked to me. Over the years, as I've come to learn about a warming ocean sea level rise and runaway climate impacts, I realized that the very same thing that had nourished my family for generations could now potentially destroy us. This realization has shaped my dedication to building out a truly pacifika led climate movement. Bulavinaca My name is Fenton Utnatombua and I'm from the Fiji Islands. Today I have the absolute privilege to be able to talk to you about the Pacific Climate Warriors. The Pacific Climate warriors are an incredible network of young pacifika people from across the Pacific region and in diaspora communities in Australia, Aotearoa, New Zealand and the United States. The Pacific Climate warriors and the communities that they represent contribute less than 1% to Global Greenhouse gas emissions, yet they are among the most vulnerable to the threats of the climate crisis. Our story as the Pacific Climate warriors began over a decade ago at the Youth Climate Conference, the Global Power Shift in Istanbul, Turkey. It was there that we realized that the only stories folks from outside the Pacific knew about our people was that we were mere victims to this climate crisis, waiting to be saved from our drowning islands. This was of course, untrue. Collectively, right then and there, we decided to break this trend in climate storytelling and instead of only focusing on climate impacts in the Pacific, also show the world what we were doing to fight. We are not drowning, we are fighting became our slogan, our mantra. The shared identity of the Pacific climate warriors was born. And less than a year later, at the largest coal production port in the world in Newcastle, Australia, we paddled out in our traditionally built handmade canoes and blockaded that coal port for a day. In a first of its kind demonstration of that magnitude, we were able to break this victim narrative and build one that reflected the full dignity of our people in the face of this climate crisis. We refused to just be the canary in the coal mines, ready to be sacrificed for the valuable lessons. We knew that we had to be the heroes our communities deserved. And we also knew that we had to retell the world our stories and build our climate narratives. So many of us are being defined by narratives that do not serve us. So many of us let these stories take away our power, rob us of our agency and strip us of our fullest, most authentic selves. That has to change. We are who we are because of the stories we tell ourselves and each other. And we need to get better at telling stories and driving strategies that are bold enough to build a new vision of the futures that we can co create. In order to do that, we need two Climate Leadership and Narrative Leadership. Climate Leadership is specific communities continuing to say no to fossil fuels and yes to climate solutions in whatever spaces we find ourselves, from village town halls all the way up to the United Nations Climate talks. Climate Leadership our partners, allies and collaborators across the majority world creating the conditions necessary for us to voyage towards a Pacific beyond fossil fuels. Climate Leadership are our friends in the Philippines teaching us over zoom how to build backpack size portable solar modules so we have the option to be able to charge our mobile devices, medical supplies as well as turn on a light after a Category 5 cyclone has made landfall on one of our islands. Climate Leadership is about our communities learning about Keyhole Gardens, gardens built above the ground to mitigate saltwater intrusion so our people can grow, consume and redistribute our local and traditional foods. Narrative leadership, on the other hand, is this. It's a community organizer from the Pacific standing here telling you stories about our people at the front lines of this climate crisis. It's a willingness to articulate an alternative way forward that puts people and communities before anything else. Narrative leadership is about telling fuller, more nuanced stories that enable us to become the future ancestors that outcome children can be proud of. Climate Leadership and narrative leadership built and shaped by the most vulnerable communities can and will unlock the futures we all deserve. A future where climate solutions support and empower U.S. indigenous communities to be our most dignified selves. A future where our communities can own and have access to renewable sources of energy, and a future that is ultimately fossil free. It takes all of us doing what we can to be able to co create these futures. And in order to co create these futures that we deserve, we need to break the stories and the strategies that don't serve us anymore and build the ones that do. Beyond just being stewards of our stories, we can also be stewards of our solutions. And thank you very much.
-[Speaker A] That was Fenton Lieutenantabua at TED Countdown's Dilemma event in Brussels in 2024. If you're curious about TED's curation, find out more@ted.com curationguidelines and that's it for today's show. TED Talks Daily is part of the TED Audio Collective. This episode was produced and edited by our team, Martha Estefanos, Oliver Friedman, Brian Greene, Lucy Little, Alejandra Salazar and Tonsika Sarmarnivon. It was mixed by Christopher Faizy Bogan. Additional support from Emma Tobner and Daniela Balaurazo. I'm Elise Hu. I'll be back tomorrow with a fresh idea for your feed. Thanks for listening.
-[Speaker C] On the TED Radio Hour. In the middle school cafeteria, Ty Toshiro always sat with his equally nerdy buddies.
-[Speaker B] The socially awkward kids were the furthest.
-[Speaker C] Thing from cool, and he often wondered.
-[Speaker B] Why am I so socially awkward? And what am I going to do about that?
-[Speaker C] Now? Ty is a psychologist and expert on awkwardness, and he has some answers. So awkward. That's next time on the TED Radio Hour from npr. Subscribe or listen to the TED Radio Hour wherever you get your podcasts"""
+def prepare_audio_consumer():
+    """Create the transcription group at $ without deleting queued work."""
+    ensure_consumer_group(AUDIO_UPLOADED_STREAM, TRANSCRIPTION_GROUP)
 
-async def _handle_message(parsed_data):
-    start_time = time.time()
-    
-    # Use pre-computed file hash if available, otherwise compute it
-    file_path = parsed_data['file_path']
-    if not os.path.exists(file_path):
-        print(f"❌ Audio file not found: {file_path}")
+
+def _entry(parsed_data: dict) -> dict:
+    return {key: value for key, value in parsed_data.items() if key != "transcript"}
+
+
+async def _handle_message(parsed_data, message_id=None):
+    job_id = parsed_data.get("job_id")
+    job = jobs.get_job(job_id) if job_id else None
+    if job and (jobs.is_terminal(job) or job.get("status") in {"summarizing", "done"}):
+        ack(AUDIO_UPLOADED_STREAM, TRANSCRIPTION_GROUP, message_id)
         return
-    
-    # Check if file_hash was pre-computed during download
-    if 'file_hash' in parsed_data and parsed_data['file_hash']:
-        file_hash = parsed_data['file_hash']
-        print(f"🎯 Using pre-computed file hash: {file_hash[:8]}...")
-    else:
-        # Fallback: compute hash by reading file (for backward compatibility)
-        print(f"🔄 Computing file hash for {file_path}...")
-        with open(file_path, 'rb') as f:
-            file_hash = hashlib.md5(f.read()).hexdigest()
-        print(f"📝 Computed file hash: {file_hash[:8]}...")
-    
-    # Check transcript cache first
-    cached_transcript = CacheService.get_cached_transcript_by_hash(file_hash)
-    if cached_transcript:
-        print(f"🎯 Found cached transcript for {file_path}")
-        message_txt = cached_transcript["transcript"]
-        end_time = time.time()
-        total_time = end_time - start_time
-        print(f"Retrieved cached transcript in {total_time}s")
-    else:
-        # No cached transcript, perform transcription
-        print(f"🔄 Transcribing {file_path}...")
-        message_txt = await asyncio.to_thread(assemblyai_transcriber.transcribe_audio, file_path)
-        end_time = time.time()
-        total_time = end_time - start_time
-        print(f"Transcribed and diarized data in {total_time}")
+    if job and jobs.is_past(job.get("deadline_at")):
+        jobs.fail_job(job_id, "timeout", retryable=True)
+        ack(AUDIO_UPLOADED_STREAM, TRANSCRIPTION_GROUP, message_id)
+        return
+    if job and job.get("status") in {"accepted", "resolving", "transcribing"}:
+        if job.get("status") != "transcribing":
+            jobs.transition(job_id, "transcribing")
 
-        # Cache the transcript for future use
-        transcript_data = {
-            "transcript": message_txt,
-            "metadata": parsed_data.get("metadata", {}),
-            "transcript_length": len(message_txt),
-            "processing_time": total_time,
-            "file_path": file_path,
-            "file_hash": file_hash,
-            "summaries": {}
-        }
-        CacheService.set_cached_transcript_by_hash(file_hash, transcript_data)
-        print(f"💾 Cached transcript for {file_path}")
-
-    # now process & emit
-    parsed_data["transcript"] = message_txt
-    transcription_complete_producer.emit_transcription_completed(parsed_data)
-    print(f"✅ Processed and emitted for {parsed_data['file_path']}")
-
-def consume_audio_uploaded(loop):
-    print("🎧 Trimming old stream entries and starting consumer...")
-    redis_client.xtrim(AUDIO_UPLOADED_STREAM, maxlen=0)
-    last_id = "0"  # only listen to *new* messages
-    print("👂 Listening for audio_uploaded events...")
+    file_path = parsed_data["file_path"]
+    if not os.path.exists(file_path):
+        log_event(job_id, "transcribing", "audio_missing")
+        fail_stage(
+            job_id=job_id,
+            stage="transcribing",
+            code="audio_missing",
+            message="Audio file not found.",
+            retryable=False,
+            stream=AUDIO_UPLOADED_STREAM,
+            group=TRANSCRIPTION_GROUP,
+            message_id=message_id,
+            entry=_entry(parsed_data),
+        )
+        return
 
     try:
-        while True:
-            messages = redis_client.xread({AUDIO_UPLOADED_STREAM: last_id}, block=60000, count=1)
-            for stream, entries in messages:
-                for msg_id, data in entries:
-                    print(f"🎧 Received: {data.get('data')}")
-                    last_id = msg_id
-                    raw_json = data.get('data')
-                    if raw_json:
-                        try:
-                            parsed_data = json.loads(raw_json)
-                        except json.JSONDecodeError as e:
-                            print("❌ Failed to decode JSON:", e)
-                            continue
-                        except Exception as e:
-                            print(e);
-                    else:
-                        print("No Data Found")
-                        continue
-                    asyncio.run_coroutine_threadsafe(
-                        _handle_message(parsed_data),
-                        loop
-                    )
+        if parsed_data.get("file_hash"):
+            file_hash = parsed_data["file_hash"]
+        else:
+            with open(file_path, "rb") as handle:
+                file_hash = hashlib.md5(handle.read()).hexdigest()
 
-    except asyncio.CancelledError:
-        print("🛑 Consumer task cancelled — shutting down gracefully.")
+        cached_transcript = CacheService.get_cached_transcript_by_hash(file_hash)
+        if cached_transcript:
+            message_txt = cached_transcript["transcript"]
+            cache_flags = {"file": True, "transcript": True}
+        else:
+            message_txt = await asyncio.to_thread(assemblyai_transcriber.transcribe_audio, file_path)
+            transcript_data = {
+                "transcript": message_txt,
+                "metadata": parsed_data.get("metadata", {}),
+                "transcript_length": len(message_txt),
+                "processing_time": 0,
+                "file_path": file_path,
+                "file_hash": file_hash,
+                "summaries": {},
+            }
+            CacheService.set_cached_transcript_by_hash(file_hash, transcript_data)
+            cache_flags = {"file": True, "transcript": False}
+
+        content_hash = hashlib.sha256(message_txt.encode("utf-8")).hexdigest()
+        if job_id:
+            jobs.remember_transcript(
+                job_id,
+                file_hash=file_hash,
+                transcript_hash=content_hash,
+                transcript_length=len(message_txt),
+                cache_flags=cache_flags,
+                file_path=file_path,
+                metadata=parsed_data.get("metadata"),
+            )
+            fresh = jobs.get_job(job_id)
+            if fresh and jobs.is_terminal(fresh):
+                ack(AUDIO_UPLOADED_STREAM, TRANSCRIPTION_GROUP, message_id)
+                return
+
+        parsed_data["transcript"] = message_txt
+        parsed_data["file_hash"] = file_hash
+        transcription_complete_producer.emit_transcription_completed(parsed_data)
+        ack(AUDIO_UPLOADED_STREAM, TRANSCRIPTION_GROUP, message_id)
+        log_event(job_id, "transcribing", "completed")
+    except Exception as exc:
+        retryable = is_transient_exception(exc)
+        fail_stage(
+            job_id=job_id,
+            stage="transcribing",
+            code="upstream_unavailable",
+            message="Transcription failed.",
+            retryable=retryable,
+            stream=AUDIO_UPLOADED_STREAM,
+            group=TRANSCRIPTION_GROUP,
+            message_id=message_id,
+            entry=_entry(parsed_data),
+        )
 
 
-if __name__ == "__main__":
-    consume_audio_uploaded()
+def consume_audio_uploaded(loop):
+    log_event(None, "transcribing", "consumer_started")
+    consume_loop(
+        AUDIO_UPLOADED_STREAM,
+        TRANSCRIPTION_GROUP,
+        "transcription",
+        _handle_message,
+        loop,
+    )

@@ -1,6 +1,9 @@
 import os
 import assemblyai as aai
 from dotenv import load_dotenv
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+
+from agent.errors import is_transient_exception
 
 load_dotenv()
 
@@ -24,6 +27,12 @@ config = aai.TranscriptionConfig(
 
 transcriber = aai.Transcriber(config=config)
 
+@retry(
+    reraise=True,
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=8),
+    retry=retry_if_exception(is_transient_exception),
+)
 def transcribe_audio(file_path: str):
     print("Transcribing...")
     try:

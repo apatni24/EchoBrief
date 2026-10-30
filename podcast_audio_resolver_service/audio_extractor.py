@@ -3,6 +3,9 @@ import requests
 import feedparser
 import hashlib
 import json
+import fcntl
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 import time
 
@@ -10,6 +13,20 @@ import time
 CACHE_FILE = "audio_files/download_cache.json"
 RSS_CACHE_DIR = "rss_cache"
 RSS_CACHE_TTL = 3600  # 1 hour
+_thread_lock = threading.Lock()
+
+@contextmanager
+def _cache_lock():
+    directory = os.path.dirname(CACHE_FILE) or "."
+    os.makedirs(directory, exist_ok=True)
+    lock_path = CACHE_FILE + ".lock"
+    with _thread_lock:
+        with open(lock_path, "a+") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 def load_download_cache():
     """Load the download cache from file"""
@@ -21,14 +38,27 @@ def load_download_cache():
         print(f"⚠️ Error loading download cache: {e}")
     return {}
 
+def _write_download_cache(cache):
+    os.makedirs(os.path.dirname(CACHE_FILE) or ".", exist_ok=True)
+    with open(CACHE_FILE, 'w') as f:
+        json.dump(cache, f, indent=2)
+
 def save_download_cache(cache):
     """Save the download cache to file"""
     try:
-        os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
-        with open(CACHE_FILE, 'w') as f:
-            json.dump(cache, f, indent=2)
+        with _cache_lock():
+            _write_download_cache(cache)
     except Exception as e:
         print(f"⚠️ Error saving download cache: {e}")
+
+def update_download_cache(mutator):
+    """Read-modify-write the download cache under one lock. mutator returns True to persist."""
+    with _cache_lock():
+        cache = load_download_cache()
+        changed = mutator(cache)
+        if changed:
+            _write_download_cache(cache)
+        return cache
 
 def find_existing_audio_file(audio_url, episode_title):
     """
@@ -53,8 +83,12 @@ def find_existing_audio_file(audio_url, episode_title):
             return cached_file_path, cached_file_hash
         else:
             print(f"⚠️ Cached file not found, removing from cache: {cached_file_path}")
-            del cache[clean_url]
-            save_download_cache(cache)
+
+            def forget(cache):
+                cache.pop(clean_url, None)
+                return True
+
+            update_download_cache(forget)
     
     # Fallback: Check by episode title (for files downloaded before cache was implemented)
     folder = 'audio_files'
@@ -73,14 +107,16 @@ def find_existing_audio_file(audio_url, episode_title):
                         for chunk in iter(lambda: f.read(8192), b""):
                             hash_md5.update(chunk)
                     file_hash = hash_md5.hexdigest()
-                    
-                    # Add to cache for future use
-                    cache[clean_url] = {
-                        "file_path": file_path,
-                        "file_hash": file_hash,
-                        "episode_title": episode_title
-                    }
-                    save_download_cache(cache)
+
+                    def remember(cache):
+                        cache[clean_url] = {
+                            "file_path": file_path,
+                            "file_hash": file_hash,
+                            "episode_title": episode_title
+                        }
+                        return True
+
+                    update_download_cache(remember)
                     
                     print(f"💾 Added existing file to cache")
                     return file_path, file_hash
@@ -155,13 +191,15 @@ def get_episode_audio_file_with_episode_title(episode_entry, episode_title):
         
         # Add to download cache
         try:
-            cache = load_download_cache()
-            cache[audio_url] = {
-                "file_path": file_path,
-                "file_hash": file_hash,
-                "episode_title": episode_title
-            }
-            save_download_cache(cache)
+            def remember(cache):
+                cache[audio_url] = {
+                    "file_path": file_path,
+                    "file_hash": file_hash,
+                    "episode_title": episode_title
+                }
+                return True
+
+            update_download_cache(remember)
             print(f"💾 Added to download cache")
         except Exception as e:
             print(f"Warning: Failed to save to download cache: {e}")
@@ -221,13 +259,15 @@ def download_episode_audio_with_episode_id(rss_url, apple_episode_id):
             print(f"File hash: {file_hash}")
             
             # Add to download cache
-            cache = load_download_cache()
-            cache[audio_url] = {
-                "file_path": file_path,
-                "file_hash": file_hash,
-                "episode_title": episode_title
-            }
-            save_download_cache(cache)
+            def remember(cache):
+                cache[audio_url] = {
+                    "file_path": file_path,
+                    "file_hash": file_hash,
+                    "episode_title": episode_title
+                }
+                return True
+
+            update_download_cache(remember)
             print(f"💾 Added to download cache")
             
             return file_path, file_hash

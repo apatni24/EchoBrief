@@ -82,43 +82,56 @@ class TestCacheEndpoints:
 
     @patch('cache_service.CacheService.invalidate_specific_episode')
     def test_invalidate_episode_cache_success(self, mock_invalidate):
-        """Test successful episode cache invalidation"""
+        """Invalidate does nothing until the matching approval is approved."""
         mock_invalidate.return_value = True
-        
+
         response = client.delete("/cache/invalidate/apple/123456/ts")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert "Cache invalidated for apple:123456:ts" in data["message"]
+
+        assert response.status_code == 202
+        body = response.json()
+        assert body["status"] == "awaiting_approval"
+        mock_invalidate.assert_not_called()
+
+        decision = client.post(
+            f"/agent/v1/approvals/{body['approval_id']}/decision",
+            json={"decision": "approve"},
+        )
+        assert decision.status_code == 200
+        approved = decision.json()
+        assert approved["status"] == "done"
+        assert approved["result"]["success"] is True
+        assert "Cache invalidated for apple:123456:ts" in approved["result"]["message"]
         mock_invalidate.assert_called_once_with("apple", "123456", "ts")
 
     @patch('cache_service.CacheService.invalidate_specific_episode')
     def test_invalidate_episode_cache_not_found(self, mock_invalidate):
-        """Test episode cache invalidation when episode doesn't exist"""
+        """Approved invalidate still reports a missing cache entry."""
         mock_invalidate.return_value = False
-        
+
         response = client.delete("/cache/invalidate/spotify/789/bs")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is False
-        assert "Cache invalidated for spotify:789:bs" in data["message"]
+        assert response.status_code == 202
+        approval_id = response.json()["approval_id"]
+
+        decision = client.post(
+            f"/agent/v1/approvals/{approval_id}/decision",
+            json={"decision": "approve"},
+        )
+        assert decision.status_code == 200
+        approved = decision.json()
+        assert approved["result"]["success"] is False
+        assert "Cache invalidated for spotify:789:bs" in approved["result"]["message"]
         mock_invalidate.assert_called_once_with("spotify", "789", "bs")
 
     def test_invalidate_episode_cache_invalid_params(self):
-        """Test episode cache invalidation with invalid parameters"""
-        # Test with invalid platform
+        """Empty path params stay a no-op. Real targets require approval."""
         response = client.delete("/cache/invalidate/invalid/123/ts")
-        assert response.status_code == 200  # Should still work, just return False
+        assert response.status_code == 202
 
-        # Test with empty episode ID
         response = client.delete("/cache/invalidate/apple/none/ts")
         assert response.status_code == 200
 
-        # Test with invalid summary type
         response = client.delete("/cache/invalidate/apple/123/invalid")
-        assert response.status_code == 200
+        assert response.status_code == 202
 
     @patch('cache_service.CacheService.get_cached_episode')
     def test_submit_with_cache_hit(self, mock_get_cached):

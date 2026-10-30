@@ -18,6 +18,7 @@
 - [LangChain Summarization Flow](#-langchain-summarization-flow)
 - [Usage Limits & Authentication](#-usage-limits--authentication)
 - [Cold Start Optimization](#-cold-start-optimization)
+- [Agent interface](#-agent-interface)
 - [Example Payload](#-example-payload)
 - [Tech Stack](#-tech-stack)
 - [Project Structure](#-project-structure)
@@ -213,6 +214,12 @@ EchoBrief now provides instant feedback to users about backend progress:
 Render auto-suspends inactive services, which can cause a ~25–30s delay on the first request. To combat this:
 
 > ⚡ As soon as the frontend loads, it pings the backend's `/health` endpoint to **pre-warm** the server — ensuring fast, seamless user experience even after idle periods.
+
+---
+
+## 🤖 Agent interface
+
+Agents do not need the WebSocket. Discover operations at `GET /.well-known/echobrief/capabilities.json` and poll `GET /agent/v1/jobs/{job_id}` until the job is `done`, `failed`, `cancelled`, or `expired`. `POST /submit` and `WS /ws/summary/{job_id}` are unchanged for the human UI.
 
 ---
 
