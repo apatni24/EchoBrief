@@ -1,13 +1,25 @@
-from redis_stream_client import redis_client, AUDIO_UPLOADED_STREAM
+from redis_stream_client import (
+    AUDIO_UPLOADED_STREAM,
+    TRANSCRIPTION_GROUP,
+    redis_client,
+    trim_acked_history,
+)
+from agent.audit import append as audit_append
 import json
 
 def emit_audio_uploaded(data: dict):
     try:
-        redis_client.xadd(AUDIO_UPLOADED_STREAM, {"data": json.dumps(data)})
-        redis_client.xtrim(AUDIO_UPLOADED_STREAM, maxlen="500")
-        print(f"✅ Event emitted: audio_uploaded for {data['file_path']}")
+        stream_id = redis_client.xadd(AUDIO_UPLOADED_STREAM, {"data": json.dumps(data)})
     except Exception as err:
         print("Unable to post message:", err)
+        raise
+    trim_acked_history(AUDIO_UPLOADED_STREAM, TRANSCRIPTION_GROUP)
+    job_id = data.get("job_id") if isinstance(data, dict) else None
+    try:
+        audit_append(job_id, "resolving", "published")
+    except Exception:
+        pass
+    return stream_id
 
 # Example usage
 if __name__ == "__main__":

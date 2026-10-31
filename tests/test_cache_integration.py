@@ -248,57 +248,44 @@ class TestCacheIntegration:
     def test_cache_stats_integration(self, mock_redis):
         """Test cache statistics integration"""
         
-        # Mock cache keys for episode, transcript, and file hash caches
-        episode_keys = [
-            "episode:apple:123:ts",
-            "episode:spotify:456:bs",
-            "episode:apple:789:ns"
-        ]
-        transcript_keys = [
-            "transcript:abc123",
-            "transcript:def456"
-        ]
-        file_hash_keys = [
-            "transcript:file:hash1",
-            "transcript:file:hash2"
-        ]
-        
-        def mock_keys(pattern):
-            if pattern == "episode:*":
-                return episode_keys
-            elif pattern == "transcript:*":
-                return transcript_keys + file_hash_keys
-            elif pattern == "transcript:file:*":
-                return file_hash_keys
-            return []
-        
-        mock_redis.keys.side_effect = mock_keys
-        
+        def mock_get(key):
+            return {
+                CacheService.STATS_EPISODE_COUNT: "3",
+                CacheService.STATS_TRANSCRIPT_COUNT: "4",
+                CacheService.STATS_FILE_HASH_COUNT: "2",
+                CacheService.STATS_EPISODE_HITS: "0",
+                CacheService.STATS_EPISODE_MISSES: "0",
+            }.get(key)
+
+        mock_redis.get.side_effect = mock_get
+
         # Get cache stats
         response = client.get("/cache/stats")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["episode_cache_count"] == 3
-        assert data["transcript_cache_count"] == 4  # transcript_keys + file_hash_keys
+        assert data["transcript_cache_count"] == 4  # transcript keys including file-hash keys
         assert data["file_hash_cache_count"] == 2
-        assert data["total_cached_items"] == 7  # episode_keys + transcript_keys + file_hash_keys
+        assert data["total_cached_items"] == 7  # episode + transcript counters
+        mock_redis.keys.assert_not_called()
 
     @patch('cache_service.redis_client')
     def test_cache_invalidation_integration(self, mock_redis):
-        """Test cache invalidation integration"""
-        
-        # Mock successful invalidation
+        """Approved invalidation deletes the episode key."""
         mock_redis.delete.return_value = 1
-        
-        # Invalidate specific episode
+
         response = client.delete("/cache/invalidate/apple/123456/ts")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        
-        # Verify correct key was deleted
+        assert response.status_code == 202
+        approval_id = response.json()["approval_id"]
+        mock_redis.delete.assert_not_called()
+
+        decision = client.post(
+            f"/agent/v1/approvals/{approval_id}/decision",
+            json={"decision": "approve"},
+        )
+        assert decision.status_code == 200
+        assert decision.json()["result"]["success"] is True
         mock_redis.delete.assert_called_once_with("episode:apple:123456:ts")
 
     @patch('cache_service.redis_client')

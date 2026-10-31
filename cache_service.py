@@ -16,6 +16,41 @@ class CacheService:
     # TTL values (in seconds) - 7 days
     EPISODE_CACHE_TTL = 7 * 24 * 60 * 60
     TRANSCRIPT_CACHE_TTL = 7 * 24 * 60 * 60
+
+    # Maintained counters. get_cache_stats reads these instead of KEYS.
+    STATS_EPISODE_COUNT = "stats:episode_cache_count"
+    STATS_TRANSCRIPT_COUNT = "stats:transcript_cache_count"
+    STATS_FILE_HASH_COUNT = "stats:file_hash_cache_count"
+    STATS_EPISODE_HITS = "stats:episode_cache_hits"
+    STATS_EPISODE_MISSES = "stats:episode_cache_misses"
+
+    @staticmethod
+    def _bump(key: str, delta: int) -> None:
+        try:
+            if delta >= 0:
+                for _ in range(delta):
+                    redis_client.incr(key)
+            else:
+                value = int(redis_client.decr(key))
+                if value < 0:
+                    redis_client.set(key, "0")
+        except Exception as exc:
+            print(f"⚠️ Cache counter error: {exc}")
+
+    @staticmethod
+    def _count_new(cache_key: str, counter_key: str) -> None:
+        try:
+            if not redis_client.exists(cache_key):
+                CacheService._bump(counter_key, 1)
+        except Exception as exc:
+            print(f"⚠️ Cache counter error: {exc}")
+
+    @staticmethod
+    def _read_counter(key: str) -> int:
+        raw = redis_client.get(key)
+        if raw is None or raw == "":
+            return 0
+        return int(raw)
     
     @staticmethod
     def _generate_episode_key(platform: str, episode_id: str, summary_type: str) -> str:
@@ -57,9 +92,17 @@ class CacheService:
             
             if cached_data:
                 data = json.loads(cached_data)
+                try:
+                    redis_client.incr(CacheService.STATS_EPISODE_HITS)
+                except Exception as exc:
+                    print(f"⚠️ Cache counter error: {exc}")
                 print(f"🎯 Cache HIT: Found cached episode {episode_id} for {summary_type}")
                 return data
-            
+
+            try:
+                redis_client.incr(CacheService.STATS_EPISODE_MISSES)
+            except Exception as exc:
+                print(f"⚠️ Cache counter error: {exc}")
             print(f"❌ Cache MISS: No cached episode {episode_id} for {summary_type}")
             return None
             
@@ -72,6 +115,7 @@ class CacheService:
         """Cache episode summary"""
         try:
             key = CacheService._generate_episode_key(platform, episode_id, summary_type)
+            CacheService._count_new(key, CacheService.STATS_EPISODE_COUNT)
             cache_data = {
                 **data,
                 "cached_at": time.time(),
@@ -98,6 +142,7 @@ class CacheService:
             key = CacheService._generate_episode_key(platform, episode_id, summary_type)
             result = redis_client.delete(key)
             if result:
+                CacheService._bump(CacheService.STATS_EPISODE_COUNT, -1)
                 print(f"🗑️ Invalidated cache for episode {episode_id} ({summary_type})")
             return bool(result)
         except Exception as e:
@@ -106,18 +151,22 @@ class CacheService:
     
     @staticmethod
     def get_cache_stats() -> Dict[str, Any]:
-        """Get cache statistics"""
+        """Get cache statistics from maintained counters. Does not call KEYS."""
         try:
-            # Count episode cache keys
-            episode_keys = len(redis_client.keys(f"{CacheService.EPISODE_CACHE_PREFIX}:*"))
-            transcript_keys = len(redis_client.keys(f"{CacheService.TRANSCRIPT_CACHE_PREFIX}:*"))
-            file_hash_keys = len(redis_client.keys(f"{CacheService.TRANSCRIPT_CACHE_PREFIX}:file:*"))
-            
+            episode_keys = CacheService._read_counter(CacheService.STATS_EPISODE_COUNT)
+            transcript_keys = CacheService._read_counter(CacheService.STATS_TRANSCRIPT_COUNT)
+            file_hash_keys = CacheService._read_counter(CacheService.STATS_FILE_HASH_COUNT)
+            hits = CacheService._read_counter(CacheService.STATS_EPISODE_HITS)
+            misses = CacheService._read_counter(CacheService.STATS_EPISODE_MISSES)
+            reads = hits + misses
             return {
                 "episode_cache_count": episode_keys,
                 "transcript_cache_count": transcript_keys,
                 "file_hash_cache_count": file_hash_keys,
-                "total_cached_items": episode_keys + transcript_keys
+                "total_cached_items": episode_keys + transcript_keys,
+                "episode_cache_hits": hits,
+                "episode_cache_misses": misses,
+                "episode_cache_hit_ratio": (hits / reads) if reads else None,
             }
             
         except Exception as e:
@@ -163,6 +212,8 @@ class CacheService:
         """Cache transcript data by file hash"""
         try:
             key = CacheService._generate_file_hash_key(file_hash)
+            CacheService._count_new(key, CacheService.STATS_FILE_HASH_COUNT)
+            CacheService._count_new(key, CacheService.STATS_TRANSCRIPT_COUNT)
             cache_data = {
                 **data,
                 "cached_at": time.time(),
@@ -209,6 +260,7 @@ class CacheService:
         try:
             transcript_hash = CacheService._generate_transcript_hash(transcript)
             key = CacheService._generate_transcript_key(transcript_hash)
+            CacheService._count_new(key, CacheService.STATS_TRANSCRIPT_COUNT)
             cache_data = {
                 **data,
                 "cached_at": time.time(),
@@ -228,7 +280,20 @@ class CacheService:
         except Exception as e:
             print(f"⚠️ Transcript cache set error: {e}")
             return False
-    
+
+    @staticmethod
+    def get_cached_transcript_by_content_hash(transcript_hash: str) -> Optional[Dict[str, Any]]:
+        """Get cached transcript data by the sha256 of the transcript text."""
+        try:
+            key = CacheService._generate_transcript_key(transcript_hash)
+            cached_data = redis_client.get(key)
+            if not cached_data:
+                return None
+            return json.loads(cached_data)
+        except Exception as e:
+            print(f"⚠️ Transcript cache error: {e}")
+            return None
+
     @staticmethod
     def invalidate_specific_transcript(transcript: str) -> bool:
         """Invalidate a specific transcript cache entry"""
@@ -263,7 +328,10 @@ class CacheService:
             
             if total_cleared == 0:
                 print("🧹 No cached items to clear")
-            
+
+            redis_client.set(CacheService.STATS_EPISODE_COUNT, "0")
+            redis_client.set(CacheService.STATS_TRANSCRIPT_COUNT, "0")
+            redis_client.set(CacheService.STATS_FILE_HASH_COUNT, "0")
             return True
             
         except Exception as e:

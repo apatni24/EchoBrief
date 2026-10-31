@@ -1,0 +1,23 @@
+policies:
+  - id: episode-duration-cap
+    operation: summarize_episode
+    when: duration_seconds > 1800
+    effect: deny
+    error_code: episode_too_long
+
+  - id: uncached-summarize-budget
+    operation: summarize_episode
+    when: episode_cache_miss
+    window_seconds: 3600
+    max_uncached_jobs: 30
+    on_exceed: require_approval
+
+  - id: invalidate-requires-approval
+    operation: invalidate_episode_cache
+    effect: require_approval
+    expires_in_seconds: 900
+
+  - id: clear-requires-approval
+    operation: clear_cache
+    effect: require_approval
+    expires_in_seconds: 900

@@ -152,47 +152,37 @@ class TestCacheService:
 
     @patch('cache_service.redis_client')
     def test_get_cache_stats_success(self, mock_redis):
-        """Test successful cache statistics retrieval"""
-        # Mock keys for different cache entries
-        episode_keys = [
-            "episode:apple:123:ts",
-            "episode:spotify:456:bs",
-            "episode:apple:789:ns"
-        ]
-        transcript_keys = [
-            "transcript:abc123:ts",
-            "transcript:def456:bs"
-        ]
-        
-        # Mock keys method to return different results for different prefixes
-        def mock_keys(pattern):
-            if pattern == "episode:*":
-                return episode_keys
-            elif pattern == "transcript:*":
-                return transcript_keys
-            return []
-        
-        mock_redis.keys.side_effect = mock_keys
-        
+        """Test successful cache statistics retrieval from maintained counters."""
+        values = {
+            CacheService.STATS_EPISODE_COUNT: "3",
+            CacheService.STATS_TRANSCRIPT_COUNT: "2",
+            CacheService.STATS_FILE_HASH_COUNT: "0",
+            CacheService.STATS_EPISODE_HITS: "4",
+            CacheService.STATS_EPISODE_MISSES: "1",
+        }
+        mock_redis.get.side_effect = lambda key: values.get(key)
+
         stats = CacheService.get_cache_stats()
-        
+
         expected_stats = {
             "episode_cache_count": 3,
             "transcript_cache_count": 2,
             "file_hash_cache_count": 0,
-            "total_cached_items": 5
+            "total_cached_items": 5,
+            "episode_cache_hits": 4,
+            "episode_cache_misses": 1,
+            "episode_cache_hit_ratio": 0.8,
         }
         assert stats == expected_stats
-        # Verify all three patterns were checked
-        assert mock_redis.keys.call_count == 3
+        mock_redis.keys.assert_not_called()
 
     @patch('cache_service.redis_client')
     def test_get_cache_stats_error(self, mock_redis):
         """Test cache statistics retrieval with Redis error"""
-        mock_redis.keys.side_effect = Exception("Redis connection error")
-        
+        mock_redis.get.side_effect = Exception("Redis connection error")
+
         stats = CacheService.get_cache_stats()
-        
+
         assert "error" in stats
 
     @patch('cache_service.redis_client')
