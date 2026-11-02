@@ -312,7 +312,13 @@ def _start_work(job: dict, url: str) -> StartResult:
     return StartResult(kind="accepted", job=current, human_body=_human_progress(current, data), data=data)
 
 
-def start_summarize(url: str, summary_type: str, idempotency_key: str | None = None) -> StartResult:
+def start_summarize(
+    url: str,
+    summary_type: str,
+    idempotency_key: str | None = None,
+    *,
+    cache_only: bool = False,
+) -> StartResult:
     url = (url or "").strip()
     if not url:
         raise AgentError("invalid_input", human_detail=HUMAN_URL_REQUIRED, retryable=False)
@@ -331,7 +337,7 @@ def start_summarize(url: str, summary_type: str, idempotency_key: str | None = N
     digest = jobs.body_hash(url, summary_type)
     input_data = {"url": url, "summary_type": summary_type}
 
-    if idempotency_key:
+    if idempotency_key and not cache_only:
         action, existing_id = jobs.read_idempotency("summarize_episode", idempotency_key, digest)
         if action == "conflict":
             raise AgentError("idempotency_conflict", retryable=False)
@@ -347,6 +353,9 @@ def start_summarize(url: str, summary_type: str, idempotency_key: str | None = N
     cached = CacheService.get_cached_episode(platform, episode_id, summary_type)
     if cached:
         return _from_cache(cached, url, summary_type, platform, episode_id, idempotency_key, digest)
+
+    if cache_only:
+        raise AgentError("not_found", "No cached summary for that episode.", retryable=False)
 
     inflight = jobs.peek_inflight(platform, episode_id, summary_type)
     if inflight:

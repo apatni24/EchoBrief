@@ -1,0 +1,43 @@
+{
+  "name": "echobrief",
+  "version": "0.1.0",
+  "description": "Official EchoBrief JavaScript SDK and CLI for the podcast summarization agent API",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "bin": {
+    "echobrief": "./bin/echobrief.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apatni24/EchoBrief.git",
+    "directory": "packages/echobrief"
+  },
+  "homepage": "https://echobrief.onrender.com",
+  "bugs": {
+    "url": "https://github.com/apatni24/EchoBrief/issues"
+  },
+  "keywords": [
+    "echobrief",
+    "podcast",
+    "summary",
+    "agent",
+    "mcp",
+    "cli"
+  ],
+  "author": "EchoBrief",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}

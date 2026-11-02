@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "echobrief"
+version = "0.1.0"
+description = "Official EchoBrief Python SDK and CLI for the podcast summarization agent API"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "EchoBrief" }]
+keywords = ["echobrief", "podcast", "summary", "agent", "mcp", "cli"]
+dependencies = ["httpx>=0.27"]
+urls = { Homepage = "https://echobrief.onrender.com", Repository = "https://github.com/apatni24/EchoBrief" }
+
+[project.scripts]
+echobrief = "echobrief.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["echobrief*"]
