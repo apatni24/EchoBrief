@@ -221,6 +221,19 @@ Render auto-suspends inactive services, which can cause a ~25–30s delay on the
 
 Agents do not need the WebSocket. Discover operations at `GET /.well-known/echobrief/capabilities.json` and poll `GET /agent/v1/jobs/{job_id}` until the job is `done`, `failed`, `cancelled`, or `expired`. `POST /submit` and `WS /ws/summary/{job_id}` are unchanged for the human UI.
 
+| Surface | URL |
+|---|---|
+| Capabilities catalog | `GET /.well-known/echobrief/capabilities.json` |
+| OpenAPI | `GET /openapi.json` |
+| MCP (Streamable HTTP) | `https://echobrief-backend.onrender.com/mcp` |
+| MCP server card | `GET /server-card` and `GET /.well-known/mcp/server-card.json` |
+| NLWeb ask | `POST /ask` (capability Q&A from the catalog; not a podcast chatbot) |
+| Sandbox notes | `GET /agent/v1/sandbox` |
+
+Production is **shared**. Prefer `Idempotency-Key` on summarize, `get_summary` for dry reads, or `cache_only=true` / `X-EchoBrief-Cache-Only: true` on summarize (404 on miss, no spend). A separate docs MCP is deferred; product tools cover `summarize_episode`, `get_job`, `get_summary`, and `get_health`.
+
+JS SDK + CLI live in `packages/echobrief` (`npx echobrief summarize <url>`). Python client + CLI live in `sdk/python`.
+
 ---
 
 ## 📨 Example Payload

@@ -8,6 +8,8 @@ from pydantic import BaseModel
 from agent.cache_gate import request_invalidate
 from agent.catalog import openapi_extras
 from agent.errors import HUMAN_INTERNAL, AgentError
+from agent.mcp_http import router as mcp_router
+from agent.nlweb import router as nlweb_router
 from agent.routes import router as agent_router
 from agent.summarize import start_summarize
 
@@ -20,8 +22,17 @@ if not frontend_url and ENV != "test":
     raise RuntimeError("Missing FRONTEND_URL environment variable.")
 
 # Create FastAPI app
-app = FastAPI()
+app = FastAPI(
+    title="EchoBrief",
+    description=(
+        "Podcast summarization backend with an unauthenticated agent API. "
+        "MCP product tools at /mcp; NLWeb capability Q&A at POST /ask. "
+        "Docs MCP is deferred. Production is shared — see GET /agent/v1/sandbox."
+    ),
+)
 app.include_router(agent_router)
+app.include_router(mcp_router)
+app.include_router(nlweb_router)
 
 # CORS setup
 origins = [frontend_url]

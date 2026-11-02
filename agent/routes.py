@@ -2,19 +2,45 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Body, Header, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from agent import cache_gate, jobs
 from agent.audit import read as read_audit
 from agent.catalog import build_capabilities, openapi_extras
 from agent.errors import HTTP_STATUS, AgentError, error_dict
 from agent.schemas import ApprovalDecisionInput
+from agent.server_card import build_server_card
 from agent.summarize import resume_job, start_summarize
 from agent import approvals
 from redis_stream_client import SUMMARIZATION_GROUP, TRANSCRIPTION_GROUP, group_exists, redis_client
 
 router = APIRouter()
+
+SANDBOX_DOC = {
+    "mode": "shared_production",
+    "warning": (
+        "EchoBrief production is a shared environment. There is no isolated sandbox "
+        "tenant. Uncached summarize_episode spends AssemblyAI and OpenRouter quota."
+    ),
+    "recommendations": [
+        "Send Idempotency-Key on summarize writes so retries coalesce.",
+        "Use GET /agent/v1/summaries (get_summary) for dry reads of existing cache entries.",
+        "Pass cache_only=true query, X-EchoBrief-Cache-Only: true, or body cache_only "
+        "on POST /agent/v1/episodes/summaries to refuse cache misses with 404 not_found "
+        "(no download, transcription, or LLM spend).",
+        "Prefer get_health before long-running jobs after Render cold starts.",
+    ],
+    "cache_only": {
+        "query": "cache_only=true",
+        "header": "X-EchoBrief-Cache-Only: true",
+        "body": {"cache_only": True},
+        "miss": {"http": 404, "error.code": "not_found"},
+    },
+    "docs_mcp": "deferred — product MCP at /mcp covers summarize_episode, get_job, get_summary, get_health.",
+}
 
 
 def _error_response(exc: AgentError, job_id: str | None = None) -> JSONResponse:
@@ -73,6 +99,29 @@ def capabilities():
     return build_capabilities()
 
 
+def _server_card_response() -> Response:
+    card = build_server_card()
+    return Response(
+        content=json.dumps(card),
+        media_type="application/mcp-server-card+json",
+    )
+
+
+@router.get("/.well-known/mcp/server-card.json", include_in_schema=False)
+def mcp_server_card_well_known():
+    return _server_card_response()
+
+
+@router.get("/server-card", include_in_schema=False)
+def mcp_server_card():
+    return _server_card_response()
+
+
+@router.get("/agent/v1/sandbox", operation_id="get_sandbox_docs", tags=["agent"])
+def sandbox_docs():
+    return SANDBOX_DOC
+
+
 @router.get("/health", operation_id="get_health", tags=["agent"], openapi_extra=openapi_extras("get_health"))
 def health():
     redis_status = "ok"
@@ -92,6 +141,14 @@ def health():
     return body
 
 
+def _truthy(value: str | bool | None) -> bool:
+    if value is True:
+        return True
+    if value is False or value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
 @router.post(
     "/agent/v1/episodes/summaries",
     operation_id="summarize_episode",
@@ -101,14 +158,22 @@ def health():
 def summarize_episode(
     payload: dict = Body(...),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    cache_only_header: str | None = Header(default=None, alias="X-EchoBrief-Cache-Only"),
+    cache_only: str | None = Query(default=None),
 ):
     if not isinstance(payload, dict):
         return _error_response(AgentError("invalid_input", retryable=False))
+    cache_only_flag = (
+        _truthy(cache_only)
+        or _truthy(cache_only_header)
+        or _truthy(payload.get("cache_only"))
+    )
     try:
         result = start_summarize(
             payload.get("url") or "",
             payload.get("summary_type") or "",
             idempotency_key=idempotency_key,
+            cache_only=cache_only_flag,
         )
     except AgentError as exc:
         return _error_response(exc)
