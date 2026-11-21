@@ -8,11 +8,35 @@
 > ⏱️ **Summarizes a 30-minute podcast in <90 seconds**  
 > 🌍 Deployed on low-latency infrastructure (Singapore – Render + Upstash)
 
+## 🎙️ What is EchoBrief?
+
+EchoBrief is an AI podcast summarizer. Paste a Spotify or Apple Podcasts episode link, choose a format, and get a bullet-point summary, a 200–300 word narrative, or 3–7 key takeaways. This repository is the backend API; the website lives in [echobrief-frontend](https://github.com/apatni24/echobrief-frontend).
+
+| | |
+|---|---|
+| Website | https://echobrief.onrender.com |
+| Developer docs | https://echobrief.onrender.com/developers |
+| OpenAPI | https://echobrief-backend.onrender.com/openapi.json |
+| Agent instructions | https://echobrief.onrender.com/AGENTS.md |
+| How it works (guide) | https://echobrief.onrender.com/podcast-summarization-guide |
+| Changelog | https://echobrief.onrender.com/changelog |
+
+### Quick example
+
+```bash
+curl -sS -X POST 'https://echobrief-backend.onrender.com/agent/v1/episodes/summaries' \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://open.spotify.com/episode/6ZMO0lyLeO2VhrPBtFbSly","summary_type":"bs"}'
+```
+
+A cache hit returns `200` with the summary. A miss returns `202` with a `job_id`; poll `GET /agent/v1/jobs/{job_id}` until it is `done` or `failed`. `summary_type` is `bs` (bullets), `ns` (narrative) or `ts` (takeaways).
+
 ## 📚 Table of Contents
+- [What is EchoBrief?](#️-what-is-echobrief)
 - [Why This Project Stands Out](#-why-this-project-stands-out)
 - [Architecture](#-architecture)
-- [Recent Updates](#-recent-updates-2024)
-- [Three-Layer Caching System](#-three-layer-caching-system-2024)
+- [Recent Updates](#-recent-updates-2025)
+- [Three-Layer Caching System](#-three-layer-caching-system-2025)
 - [RSS Feed Caching](#-rss-feed-caching)
 - [Real-Time Stage Acknowledgement](#-real-time-stage-acknowledgement)
 - [LangChain Summarization Flow](#-langchain-summarization-flow)
@@ -29,6 +53,7 @@
 - [Cache Configuration](#-cache-configuration)
 - [Frontend Screenshots](#-frontend-screenshots)
 - [Author](#-author)
+- [Limitations](#️-limitations)
 - [Future Enhancements](#-future-enhancements)
 - [Contributing](#-contributing)
 - [License](#-license)
@@ -41,7 +66,7 @@ EchoBrief was built to solve real-world backend engineering challenges. It showc
 
 - 🔄 Loose coupling across services using Redis Streams
 - 📡 Real-time updates with WebSockets for instant feedback
-- 🧠 Scalable summarization via OpenRouter (deepseek/deepseek-r1-distill-llama-70b:free)
+- 🧠 Scalable summarization via OpenRouter (default model `meta-llama/llama-3.3-70b-instruct:free`, configurable)
 - 🐳 Unified Dockerized deployment with internal NGINX routing
 - 🚦 Thoughtful design to handle cold starts and API rate limits
 - 💾 **Three-layer caching system for optimal performance**
@@ -75,7 +100,7 @@ This design choice avoids multiple Dockerfiles and leverages Render's free-tier 
 
 3. **Summarization Service** (Port 8082)
    - Consumes `transcription_complete` events
-   - Generates summaries using OpenRouter (deepseek/deepseek-r1-distill-llama-70b:free)
+   - Generates summaries using OpenRouter (default `meta-llama/llama-3.3-70b-instruct:free`)
    - Sends real-time updates via WebSockets
 
 ## 🦜🔗 LangChain Summarization Flow
@@ -88,7 +113,7 @@ EchoBrief uses [LangChain](https://python.langchain.com/) to orchestrate the LLM
 
 2. **LLM Chain Setup:**
    - The service uses LangChain's `ChatOpenAI` wrapper, configured to use OpenRouter as an OpenAI-compatible backend.
-   - The model is always set to `deepseek/deepseek-r1-distill-llama-70b:free`.
+   - The model defaults to `meta-llama/llama-3.3-70b-instruct:free` and can be changed with the `OPENROUTER_MODEL_NAME` environment variable.
    - API key rotation is supported for load distribution (using `OPENROUTER_API_KEY` and `OPENROUTER_API_KEY2`).
 
 3. **Rate Limiting:**
@@ -105,18 +130,18 @@ EchoBrief uses [LangChain](https://python.langchain.com/) to orchestrate the LLM
 
 ---
 
-## 🚀 Recent Updates (2024)
+## 🚀 Recent Updates (2025)
 
 - **Three-Layer Caching**: Now includes episode cache, local file cache, and transcript cache for maximum performance and cost savings.
 - **Google Login & Usage Limits**: Anonymous users are limited to 10 podcasts or 150 minutes; Google login unlocks unlimited access (see frontend).
-- **Summarization LLM Migration**: Switched from ChatGroq/LLaMA to OpenRouter (deepseek/deepseek-r1-distill-llama-70b:free) for all LLM summarization tasks. See ENV setup below.
+- **Summarization LLM Migration**: Switched from ChatGroq to OpenRouter for all LLM summarization tasks (the default model is now `meta-llama/llama-3.3-70b-instruct:free`). See ENV setup below.
 - **Mobile-Responsive Frontend**: All UI components are now fully responsive and optimized for mobile devices.
 - **File Hash Optimization**: File hashes are computed during download, never requiring a second read.
 - **Admin Cache Controls**: Invalidate, clear, and view cache stats via API endpoints.
 
 ---
 
-## 💾 Three-Layer Caching System (2024)
+## 💾 Three-Layer Caching System (2025)
 
 EchoBrief now implements a robust three-layer caching system:
 
@@ -232,7 +257,7 @@ Agents do not need the WebSocket. Discover operations at `GET /.well-known/echob
 
 Production is **shared**. Prefer `Idempotency-Key` on summarize, `get_summary` for dry reads, or `cache_only=true` / `X-EchoBrief-Cache-Only: true` on summarize (404 on miss, no spend). A separate docs MCP is deferred; product tools cover `summarize_episode`, `get_job`, `get_summary`, and `get_health`.
 
-JS SDK + CLI live in `packages/echobrief` (`npx echobrief summarize <url>`). Python client + CLI live in `sdk/python`.
+JS SDK + CLI live in `packages/echobrief` and a Python client + CLI in `sdk/python`. Neither is published to npm or PyPI yet; install them from this repository (for example `npm install ./packages/echobrief`).
 
 ---
 
@@ -267,7 +292,7 @@ Here's a sample event payload passed to the Redis Stream (`audio_uploaded`) when
 |--------------------|------------------------------------------|
 | Audio Resolution   | Python + feedparser                      |
 | Transcription      | AssemblyAI (diarization + speech-to-text)|
-| Summarization      | OpenRouter (deepseek/deepseek-r1-distill-llama-70b:free) |
+| Summarization      | LangChain + OpenRouter (default `meta-llama/llama-3.3-70b-instruct:free`) |
 | Events             | Redis Streams (Upstash – Singapore)      |
 | Real-Time Updates  | WebSockets                               |
 | Caching            | Redis (Upstash) with multi-layer strategy|
@@ -410,7 +435,7 @@ OPENROUTER_API_URL=https://openrouter.ai/api/v1
 
 # Optional
 ENV=dev  # or 'test' for testing
-MODEL_NAME=deepseek/deepseek-r1-distill-llama-70b:free
+OPENROUTER_MODEL_NAME=meta-llama/llama-3.3-70b-instruct:free  # default if unset
 ```
 
 ### Running the Application
@@ -487,11 +512,22 @@ SDE @ Wells Fargo | Backend Engineer
 
 ---
 
+## ⚠️ Limitations
+
+- **Platforms**: Apple Podcasts and Spotify episode URLs only.
+- **Length**: episodes over 30 minutes (1800 seconds) are rejected with `episode_too_long`.
+- **Spotify**: audio is never taken from Spotify. The resolver reads the episode and show titles from the Spotify page, looks up the show's public RSS feed in Podcast Index and matches the episode by title. Spotify exclusives (no public feed) and title mismatches fail.
+- **Apple Podcasts**: the URL must be an episode link (`?i=<episode id>`); subscriber-only episodes missing from the public feed fail.
+- **Accuracy**: summaries come from automatic transcription and an LLM, so they can omit details, misattribute speakers or state things that weren't said.
+- **Cold starts**: on Render's free tier the first request after idle can take ~25–30 seconds longer.
+- **Shared production**: there is no separate sandbox; uncached summarize calls spend real transcription and LLM quota.
+
+---
+
 ## 📌 Future Enhancements
 
 - GPU-based transcription (WhisperX + PyAnnote)
 - Support for >30 min podcasts (chunking + parallel summary stitching)
-- Authentication and saved summary history
 - Podcast directory browsing from within the app
 - Advanced cache analytics and monitoring
 - Cache warming strategies for popular content
